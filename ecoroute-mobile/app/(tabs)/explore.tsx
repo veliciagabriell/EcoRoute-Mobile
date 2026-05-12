@@ -1,175 +1,183 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ImageBackground, Image } from 'react-native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
-import { Header } from '@/components/header';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { 
-  useFonts, 
-  Manrope_400Regular, 
-  Manrope_600SemiBold, 
-  Manrope_700Bold 
-} from '@expo-google-fonts/manrope';
-
-const { width } = Dimensions.get('window');
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Header } from '@/components/header';
 
 export default function TPSDetailScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
-
-  const [fontsLoaded] = useFonts({
-    'Manrope': Manrope_400Regular,
-    'Manrope-SemiBold': Manrope_600SemiBold,
-    'Manrope-Bold': Manrope_700Bold,
-  });
-
-  const manrope = { fontFamily: 'Manrope' };
-
-  if (!fontsLoaded) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#1A365D" />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
-      <Header 
-        title="Detail TPS" 
-        showBack={true}
-        onMenuPress={() => console.log('Menu pressed')}
-      />
+      <Header title="Detail TPS" showBack={false} />
 
       <ScrollView 
-        style={styles.scrollView} 
-        contentContainerStyle={{ paddingBottom: 140 }}
+        style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        
-        {/* Status Banner */}
         <View style={styles.statusBanner}>
-          <MaterialIcons name="error-outline" size={22} color="#93000A" style={styles.bannerIcon} />
-          <View style={styles.bannerTextContainer}>
-            <ThemedText style={[manrope, styles.statusTitle]}>STATUS: KRITIS</ThemedText>
-            <ThemedText style={[manrope, styles.statusSubtitle]}>
-              Kapasitas hampir penuh. Segera jadwalkan pengangkutan.
-            </ThemedText>
+          <View style={styles.statusIconBox}>
+            <MaterialIcons name="warning" size={16} color="#FFFFFF" />
+          </View>
+          <View style={styles.statusTextBox}>
+            <ThemedText style={styles.statusTitle}>STATUS: KRITIS</ThemedText>
+            <ThemedText style={styles.statusDesc}>Kapasitas hampir penuh. Segera jadwalkan pengangkutan.</ThemedText>
           </View>
         </View>
 
-        {/* Hero Image / Map Placeholder */}
-        <View style={styles.heroCard}>
-          <View style={styles.mapPlaceholder}>
-             <View style={styles.mapOverlay}>
-                <ThemedText style={[manrope, styles.tpsTitle]}>TPS Kebon Jeruk #04</ThemedText>
-                <View style={styles.locationContainer}>
-                   <MaterialIcons name="location-on" size={14} color="#EFF4FF" />
-                   <ThemedText style={[manrope, styles.locationText]}>Jl. Panjang Kebon Jeruk, Jakarta Barat</ThemedText>
+        <View style={styles.locationCard}>
+          <View style={styles.locationImagePlaceholder}>
+            <ImageBackground 
+              source={{ uri: 'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?q=80&w=600&auto=format&fit=crop' }} 
+              style={StyleSheet.absoluteFillObject}
+              imageStyle={{ borderRadius: 12 }}
+            >
+              <View style={styles.locationGradient} />
+              <View style={styles.locationTextContainer}>
+                <ThemedText style={styles.locationTitle}>TPS Kebon Jeruk #04</ThemedText>
+                <View style={styles.locationAddressBox}>
+                  <MaterialIcons name="location-on" size={12} color="#EFF4FF" />
+                  <ThemedText style={styles.locationAddress}>Jl. Panjang Kebon Jeruk, Jakarta Barat</ThemedText>
                 </View>
-             </View>
+              </View>
+            </ImageBackground>
           </View>
         </View>
 
-        {/* 2x2 Metrics Grid - Berdasarkan Desain Baru */}
         <View style={styles.metricsGrid}>
-          
-          {/* Card: Fullness */}
           <View style={styles.metricCard}>
             <View style={styles.metricHeader}>
-              <MaterialCommunityIcons name="delete-outline" size={24} color="#BA1A1A" />
-              <ThemedText style={[manrope, styles.metricLabel, { color: '#BA1A1A' }]}>Fullness</ThemedText>
+              <View style={[styles.metricIconBox, { backgroundColor: '#FFDAD6' }]}>
+                <MaterialCommunityIcons name="delete-empty" size={14} color="#BA1A1A" />
+              </View>
+              <ThemedText style={[styles.metricTitle, { color: '#BA1A1A' }]}>Fullness</ThemedText>
             </View>
-            <ThemedText style={[manrope, styles.metricValue]}>85%</ThemedText>
-            <View style={styles.segmentedProgressContainer}>
-              <View style={[styles.segment, { backgroundColor: '#BA1A1A' }]} />
-              <View style={[styles.segment, { backgroundColor: '#BA1A1A' }]} />
-              <View style={[styles.segment, { backgroundColor: '#BA1A1A' }]} />
-              <View style={[styles.segment, { backgroundColor: '#E5EEFF' }]} />
+            <View style={styles.metricRow}>
+              <ThemedText style={styles.metricValueLarge}>98</ThemedText>
+              <ThemedText style={styles.metricUnit}>%</ThemedText>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: '98%', backgroundColor: '#BA1A1A' }]} />
             </View>
           </View>
 
-          {/* Card: Ammonia */}
           <View style={styles.metricCard}>
             <View style={styles.metricHeader}>
-              <MaterialCommunityIcons name="beaker-outline" size={24} color="#43474E" />
-              <ThemedText style={[manrope, styles.metricLabel]}>Ammonia</ThemedText>
+              <View style={[styles.metricIconBox, { backgroundColor: '#E5EEFF' }]}>
+                <MaterialCommunityIcons name="molecule-co2" size={14} color="#43474E" />
+              </View>
+              <ThemedText style={styles.metricTitle}>Ammonia</ThemedText>
             </View>
-            <ThemedText style={[manrope, styles.metricValue]}>
-              67 <ThemedText style={styles.unitText}>ppm</ThemedText>
-            </ThemedText>
-            <ThemedText style={[manrope, styles.metricHint]}>Normal {"<"} 50 ppm</ThemedText>
+            <View style={styles.metricRow}>
+              <ThemedText style={styles.metricValueLarge}>67</ThemedText>
+              <ThemedText style={styles.metricUnit}>ppm</ThemedText>
+            </View>
+            <ThemedText style={styles.metricFootnote}>Normal &lt; 50 ppm</ThemedText>
           </View>
 
-          {/* Card: Temperature */}
-          <View style={styles.metricCard}>
+          <View style={[styles.metricCard, { minHeight: 82 }]}>
             <View style={styles.metricHeader}>
-              <MaterialCommunityIcons name="thermometer-lines" size={24} color="#43474E" />
-              <ThemedText style={[manrope, styles.metricLabel]}>Temperature</ThemedText>
+              <View style={[styles.metricIconBox, { backgroundColor: '#E5EEFF' }]}>
+                <MaterialCommunityIcons name="thermometer" size={14} color="#43474E" />
+              </View>
+              <ThemedText style={styles.metricTitle}>Temperature</ThemedText>
             </View>
-            <ThemedText style={[manrope, styles.metricValue]}>32°C</ThemedText>
+            <View style={styles.metricRow}>
+              <ThemedText style={styles.metricValueLarge}>32</ThemedText>
+              <ThemedText style={styles.metricUnit}>�C</ThemedText>
+            </View>
           </View>
 
-          {/* Card: Last Update */}
-          <View style={styles.metricCard}>
+          <View style={[styles.metricCard, { minHeight: 82 }]}>
             <View style={styles.metricHeader}>
-              <MaterialCommunityIcons name="history" size={24} color="#43474E" />
-              <ThemedText style={[manrope, styles.metricLabel]}>Last Update</ThemedText>
+              <View style={[styles.metricIconBox, { backgroundColor: '#E5EEFF' }]}>
+                <MaterialIcons name="access-time" size={14} color="#43474E" />
+              </View>
+              <ThemedText style={styles.metricTitle}>Last Update</ThemedText>
             </View>
-            <ThemedText style={[manrope, styles.metricValue]}>10:45</ThemedText>
-            <ThemedText style={[manrope, styles.metricHint]}>Hari ini</ThemedText>
+            <View style={styles.metricRow}>
+              <ThemedText style={styles.metricValueLarge}>10:45</ThemedText>
+            </View>
+            <ThemedText style={styles.metricFootnote}>Hari ini</ThemedText>
           </View>
-
         </View>
 
-        {/* Estimasi Jadwal Section */}
-        <View style={styles.sectionCard}>
-          <ThemedText style={[manrope, styles.sectionTitle]}>Estimasi Jadwal</ThemedText>
-          <View style={styles.innerGrayCard}>
-            <View style={styles.truckIconContainer}>
-              <MaterialCommunityIcons name="truck-delivery" size={24} color="#86A0CD" />
+        <View style={styles.sectionContainer}>
+          <ThemedText style={styles.sectionHeading}>Estimasi Jadwal</ThemedText>
+          <View style={styles.scheduleBox}>
+            <View style={styles.truckIconCircle}>
+              <MaterialCommunityIcons name="truck-outline" size={24} color="#86A0CD" />
             </View>
-            <ThemedText style={[manrope, styles.truckPlate]}>Truk B-1234-XYZ</ThemedText>
-            <ThemedText style={[manrope, styles.truckTime]}>Dijadwalkan tiba dalam{"\n"}15 Menit (11:00 AM)</ThemedText>
+            <ThemedText style={styles.scheduleSubtitle}>Truk B-1234-XYZ</ThemedText>
+            <ThemedText style={styles.scheduleText}>Sedang menuju lokasi. Perkiraan tiba dalam 15 menit.</ThemedText>
             <TouchableOpacity style={styles.outlineButton}>
-              <ThemedText style={[manrope, styles.outlineButtonText]}>Lacak Truk</ThemedText>
+              <ThemedText style={styles.outlineButtonText}>Lacak Truk</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Riwayat Section */}
-        <View style={styles.sectionCard}>
-          <ThemedText style={[manrope, styles.sectionTitle]}>Riwayat Pengangkutan</ThemedText>
-          <View style={styles.timelineContainer}>
+        <View style={styles.sectionContainer}>
+          <View style={styles.trendHeader}>
+            <ThemedText style={styles.sectionHeading}>Tren Volume</ThemedText>
+            <View style={styles.dropdownBox}>
+              <ThemedText style={styles.dropdownText}>Mingguan</ThemedText>
+              <MaterialIcons name="keyboard-arrow-down" size={16} color="#43474E" />
+            </View>
+          </View>
+          <View style={styles.chartBox}>
+            <View style={styles.chartPlaceholder}>
+              <View style={[styles.chartBar, { height: 48, backgroundColor: 'rgba(0,32,69,0.2)' }]} />
+              <View style={[styles.chartBar, { height: 66, backgroundColor: 'rgba(0,32,69,0.4)' }]} />
+              <View style={[styles.chartBar, { height: 84, backgroundColor: 'rgba(0,32,69,0.6)' }]} />
+              <View style={[styles.chartBar, { height: 108, backgroundColor: 'rgba(186,26,26,0.8)' }]} />
+            </View>
+            <View style={styles.chartDivider} />
+          </View>
+        </View>
+
+        <View style={styles.sectionContainer}>
+          <ThemedText style={styles.sectionHeading}>Riwayat Pengangkutan</ThemedText>
+          <View style={styles.historyTimeline}>
             <View style={styles.timelineLine} />
+            
             <View style={styles.historyItem}>
               <View style={[styles.timelineDot, { borderColor: '#002045' }]} />
-              <ThemedText style={[manrope, styles.historyDate]}>Kemarin, 15:20</ThemedText>
-              <ThemedText style={[manrope, styles.historyDesc]}>Diangkut oleh B-9876-ABC</ThemedText>
-              <View style={styles.volumeBadge}>
-                <MaterialCommunityIcons name="scale" size={12} color="#0D1C2E" />
-                <ThemedText style={[manrope, styles.volumeText]}>2.4 Ton</ThemedText>
+              <ThemedText style={styles.historyDate}>Kemarin, 15:20</ThemedText>
+              <ThemedText style={styles.historyDesc}>Diangkut oleh B-9876-ABC</ThemedText>
+              <View style={styles.weightBadge}>
+                <MaterialCommunityIcons name="weight-kilogram" size={10} color="#0D1C2E" style={{marginRight: 4}} />
+                <ThemedText style={styles.weightText}>850 kg</ThemedText>
+              </View>
+            </View>
+
+            <View style={styles.historyItem}>
+              <View style={styles.timelineDot} />
+              <ThemedText style={styles.historyDate}>12 Okt, 14:10</ThemedText>
+              <ThemedText style={styles.historyDesc}>Diangkut oleh B-1234-XYZ</ThemedText>
+              <View style={styles.weightBadge}>
+                <MaterialCommunityIcons name="weight-kilogram" size={10} color="#0D1C2E" style={{marginRight: 4}} />
+                <ThemedText style={styles.weightText}>820 kg</ThemedText>
               </View>
             </View>
           </View>
-          <TouchableOpacity style={styles.textButton}>
-            <ThemedText style={[manrope, styles.textButtonLabel]}>Lihat Semua Riwayat</ThemedText>
+          <TouchableOpacity style={styles.fullWidthOutlineButton}>
+            <ThemedText style={styles.fullWidthOutlineButtonText}>Lihat Semua Riwayat</ThemedText>
           </TouchableOpacity>
         </View>
-
       </ScrollView>
 
-      {/* STICKY BOTTOM ACTION BUTTON */}
-      <View style={styles.bottomActionContainer}>
+      <View style={styles.bottomActionArea}>
         <TouchableOpacity 
-          style={styles.mainActionButton}
-          onPress={() => router.push('/route')}
+          style={styles.actionButton}
+          onPress={() => router.push('/(tabs)/route')}
         >
-          <MaterialCommunityIcons name="map-marker-path" size={28} color="#FFFFFF" />
-          <ThemedText style={[manrope, styles.mainActionButtonText]}>Lihat Rute</ThemedText>
+          <MaterialCommunityIcons name="routes" size={20} color="#FFFFFF" style={{marginRight: 8}} />
+          <ThemedText style={styles.actionButtonText}>Lihat Rute</ThemedText>
         </TouchableOpacity>
       </View>
     </View>
@@ -177,102 +185,303 @@ export default function TPSDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F8F9FF' },
-  scrollView: { flex: 1 },
+  container: {
+    flex: 1,
+    backgroundColor: '#F8F9FF',
+  },
+  scrollView: {
+    flex: 1,
+  },
   statusBanner: {
-    margin: 20,
-    backgroundColor: '#FFDAD6',
-    padding: 16,
-    borderRadius: 8,
     flexDirection: 'row',
+    backgroundColor: '#FFDAD6',
+    marginHorizontal: 20,
+    marginTop: 16,
+    borderRadius: 8,
+    padding: 12,
+    shadowColor: '#BA1A1A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
     elevation: 2,
   },
-  bannerIcon: { marginRight: 12, marginTop: 2 },
-  bannerTextContainer: { flex: 1 },
-  statusTitle: { color: '#93000A', fontWeight: '700', fontSize: 14, marginBottom: 4 },
-  statusSubtitle: { color: '#93000A', fontSize: 14, lineHeight: 20 },
-  heroCard: {
-    marginHorizontal: 20,
-    height: 256,
-    borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: 'rgba(196, 198, 207, 0.3)',
+  statusIconBox: {
+    width: 24,
+    height: 24,
+    backgroundColor: '#93000A',
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
   },
-  mapPlaceholder: { flex: 1, backgroundColor: '#E5EEFF', justifyContent: 'flex-end' },
-  mapOverlay: { height: 84, backgroundColor: 'rgba(13, 28, 46, 0.8)', padding: 16 },
-  tpsTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '600', marginBottom: 4 },
-  locationContainer: { flexDirection: 'row', alignItems: 'center' },
-  locationText: { color: '#EFF4FF', fontSize: 14, marginLeft: 4 },
-  
-  // Metrics Grid Updated
-  metricsGrid: {
+  statusTextBox: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  statusTitle: {
+    fontFamily: 'Manrope',
+    fontSize: 16,
+    color: '#93000A',
+    marginBottom: 4,
+  },
+  statusDesc: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#93000A',
+    lineHeight: 20,
+  },
+  locationCard: {
     marginHorizontal: 20,
     marginTop: 24,
+    height: 180,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(196, 198, 207, 0.3)',
+    shadowColor: '#1A365D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  locationImagePlaceholder: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  locationGradient: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(13, 28, 46, 0.6)',
+  },
+  locationTextContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+  },
+  locationTitle: {
+    fontFamily: 'Manrope',
+    fontSize: 18,
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  locationAddressBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  locationAddress: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#EFF4FF',
+    marginLeft: 4,
+  },
+  metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    marginTop: 16,
     justifyContent: 'space-between',
   },
   metricCard: {
-    width: (width - 56) / 2,
+    width: '47%',
     backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     padding: 16,
-    borderRadius: 16,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(196, 198, 207, 0.3)',
     shadowColor: '#1A365D',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 10,
+    shadowRadius: 6,
     elevation: 2,
+    minHeight: 110,
   },
-  metricHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  metricLabel: { fontSize: 18, fontWeight: '400', color: '#43474E', marginLeft: 8 },
-  metricValue: { fontSize: 24, fontWeight: '700', color: '#0D1C2E', textAlign: 'left' },
-  unitText: { fontSize: 18, fontWeight: '400', color: '#43474E' },
-  metricHint: { fontSize: 14, color: '#74777F', marginTop: 4 },
-  
-  // Segmented Progress Bar
-  segmentedProgressContainer: { flexDirection: 'row', height: 6, marginTop: 12, gap: 4 },
-  segment: { flex: 1, borderRadius: 2 },
-
-  sectionCard: {
-    marginHorizontal: 20,
+  metricHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  metricIconBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  metricTitle: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#43474E',
+  },
+  metricRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  metricValueLarge: {
+    fontFamily: 'Manrope',
+    fontSize: 24,
+    color: '#0D1C2E',
+  },
+  metricUnit: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#43474E',
+    marginLeft: 4,
+  },
+  progressBarBg: {
+    height: 6,
+    backgroundColor: '#E5EEFF',
+    borderRadius: 3,
     marginTop: 12,
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  metricFootnote: {
+    fontFamily: 'Manrope',
+    fontSize: 11,
+    color: '#43474E',
+    marginTop: 8,
+  },
+  sectionContainer: {
     backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    marginTop: 16,
     borderRadius: 12,
     padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(196, 198, 207, 0.3)',
+    shadowColor: '#1A365D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#0D1C2E', marginBottom: 16 },
-  innerGrayCard: { backgroundColor: '#F8F9FF', borderRadius: 8, padding: 16, alignItems: 'center' },
-  truckIconContainer: {
-    backgroundColor: '#1A365D',
+  sectionHeading: {
+    fontFamily: 'Manrope',
+    fontSize: 16,
+    color: '#0D1C2E',
+    marginBottom: 16,
+  },
+  scheduleBox: {
+    backgroundColor: '#F8F9FF',
+    borderWidth: 1,
+    borderColor: 'rgba(196, 198, 207, 0.2)',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+  },
+  truckIconCircle: {
     width: 46,
-    height: 40,
-    borderRadius: 20,
+    height: 46,
+    backgroundColor: '#1A365D',
+    borderRadius: 23,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
   },
-  truckPlate: { fontSize: 16, fontWeight: '600', color: '#0D1C2E', marginBottom: 4 },
-  truckTime: { fontSize: 14, color: '#43474E', textAlign: 'center', marginBottom: 16 },
+  scheduleSubtitle: {
+    fontFamily: 'Manrope',
+    fontSize: 16,
+    color: '#0D1C2E',
+    marginBottom: 4,
+  },
+  scheduleText: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#43474E',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
   outlineButton: {
-    width: '100%',
-    padding: 10,
-    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#74777F',
-    alignItems: 'center',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+    backgroundColor: '#FFFFFF',
   },
-  outlineButtonText: { color: '#43474E', fontWeight: '600' },
-  timelineContainer: { marginLeft: 12, paddingLeft: 24 },
-  timelineLine: { position: 'absolute', left: 0, top: 4, bottom: 20, width: 2, backgroundColor: '#E5EEFF' },
-  historyItem: { marginBottom: 24 },
+  outlineButtonText: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#43474E',
+  },
+  trendHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dropdownBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#C4C6CF',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  dropdownText: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#0D1C2E',
+    marginRight: 4,
+  },
+  chartBox: {
+    backgroundColor: '#EFF4FF',
+    borderWidth: 1,
+    borderColor: 'rgba(196, 198, 207, 0.2)',
+    borderRadius: 8,
+    height: 160,
+    padding: 16,
+    justifyContent: 'flex-end',
+  },
+  chartPlaceholder: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 20,
+    zIndex: 2,
+  },
+  chartBar: {
+    width: 32,
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+  },
+  chartDivider: {
+    position: 'absolute',
+    bottom: 30,
+    left: 16,
+    right: 16,
+    height: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(186, 26, 26, 0.3)',
+    borderStyle: 'dashed',
+    zIndex: 1,
+  },
+  historyTimeline: {
+    paddingLeft: 12,
+  },
+  timelineLine: {
+    position: 'absolute',
+    left: 20,
+    top: 10,
+    bottom: 20,
+    width: 2,
+    backgroundColor: '#E5EEFF',
+  },
+  historyItem: {
+    paddingLeft: 32,
+    paddingBottom: 24,
+    position: 'relative',
+  },
   timelineDot: {
     position: 'absolute',
-    left: -31,
+    left: -4,
     top: 4,
     width: 16,
     height: 16,
@@ -280,10 +489,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 2,
     borderColor: '#C4C6CF',
+    zIndex: 2,
   },
-  historyDate: { fontSize: 15, color: '#0D1C2E', fontWeight: '600' },
-  historyDesc: { fontSize: 14, color: '#43474E', marginTop: 2 },
-  volumeBadge: {
+  historyDate: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#0D1C2E',
+    marginBottom: 4,
+  },
+  historyDesc: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#43474E',
+    marginBottom: 8,
+  },
+  weightBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#EFF4FF',
@@ -291,26 +511,48 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 4,
     alignSelf: 'flex-start',
+  },
+  weightText: {
+    fontFamily: 'Manrope',
+    fontSize: 11,
+    color: '#0D1C2E',
+  },
+  fullWidthOutlineButton: {
+    borderWidth: 1,
+    borderColor: '#C4C6CF',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
     marginTop: 8,
   },
-  volumeText: { fontSize: 11, color: '#0D1C2E', fontWeight: '700', marginLeft: 4 },
-  textButton: { alignItems: 'center', paddingTop: 8 },
-  textButtonLabel: { color: '#002045', fontWeight: '700', fontSize: 18 },
-  bottomActionContainer: {
-    position: 'absolute',
-    bottom: 0,
-    width: '100%',
-    padding: 20,
-    backgroundColor: 'rgba(248, 249, 255, 0.9)',
+  fullWidthOutlineButtonText: {
+    fontFamily: 'Manrope',
+    fontSize: 14,
+    color: '#0D1C2E',
   },
-  mainActionButton: {
+  bottomActionArea: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  actionButton: {
     backgroundColor: '#002045',
-    height: 60,
-    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
+    height: 52,
+    borderRadius: 12,
+    shadowColor: '#1A365D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  mainActionButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 18, marginLeft: 12 },
+  actionButtonText: {
+    fontFamily: 'Manrope',
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
 });

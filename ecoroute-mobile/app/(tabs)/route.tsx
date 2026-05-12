@@ -43,7 +43,6 @@ export default function RouteScreen() {
     <View style={styles.container}>
       <Header 
         title="Rute Pengangkutan" 
-        showBack={true}
       />
 
       <ScrollView 

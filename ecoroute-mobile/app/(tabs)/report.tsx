@@ -9,7 +9,7 @@ import {
   useFonts, 
   Manrope_400Regular, 
   Manrope_500Medium,
-  Manrope_600SemiBold, 
+  Manrope_600SemiBold,
   Manrope_700Bold 
 } from '@expo-google-fonts/manrope';
 
@@ -40,8 +40,6 @@ export default function ReportScreen() {
     <View style={styles.container}>
       <Header 
         title="Report Waste Condition" 
-        showBack={true}
-        onMenuPress={() => console.log('Menu')}
       />
 
       <ScrollView 

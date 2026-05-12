@@ -5,41 +5,56 @@ import { View, StyleSheet } from 'react-native';
 import { Footer, TabItem } from '@/components/footer';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAuth } from '@/contexts/auth-context';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
   const pathname = usePathname();
-  const [activeTab, setActiveTab] = useState('home');
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState(user?.role === 'admin' ? 'home' : 'profile');
 
   // Detect current route and update active tab
   const updateActiveTab = useCallback(() => {
     if (pathname?.includes('explore')) {
       setActiveTab('tps');
+    } else if (pathname?.includes('ecobot')) {
+      setActiveTab('ecobot');
     } else if (pathname?.includes('report')) {
       setActiveTab('report');
     } else if (pathname?.includes('profile')) {
       setActiveTab('profile');
-    } else {
+    } else if (pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/') {
       setActiveTab('home');
     }
   }, [pathname]);
 
   useFocusEffect(updateActiveTab);
 
-  const tabs: TabItem[] = [
-    { id: 'home', label: 'EcoBot', icon: 'shopping-bag' },
+  // Define tabs based on user role
+  const tabs: TabItem[] = [];
+  
+  if (user?.role === 'admin') {
+    tabs.push({ id: 'home', label: 'Dashboard', icon: 'dashboard' });
+  } else {
+    tabs.push({ id: 'ecobot', label: 'EcoBot', icon: 'chat' });
+  }
+  
+  tabs.push(
     { id: 'tps', label: 'TPS', icon: 'location-on' },
     { id: 'report', label: 'Report', icon: 'info' },
-    { id: 'profile', label: 'Profile', icon: 'person' },
-  ];
+    { id: 'profile', label: 'Profile', icon: 'person' }
+  );
 
   const handleTabPress = (tabId: string) => {
     setActiveTab(tabId);
     
     // Navigate based on tab
     switch (tabId) {
+      case 'ecobot':
+        router.push('/(tabs)/ecobot');
+        break;
       case 'tps':
         router.push('/(tabs)/explore');
         break;
@@ -51,7 +66,7 @@ export default function TabLayout() {
         break;
       case 'home':
       default:
-        router.push('/(tabs)/');
+        router.push('/(tabs)');
         break;
     }
   };
@@ -67,7 +82,15 @@ export default function TabLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            title: 'Home',
+            title: 'Dashboard',
+            href: user?.role === 'admin' ? '/(tabs)' : null,
+          }}
+        />
+        <Tabs.Screen
+          name="ecobot"
+          options={{
+            title: 'EcoBot',
+            href: user?.role !== 'admin' ? '/(tabs)/ecobot' : null,
           }}
         />
         <Tabs.Screen
@@ -86,6 +109,20 @@ export default function TabLayout() {
           name="profile"
           options={{
             title: 'Profile',
+          }}
+        />
+        <Tabs.Screen
+          name="help"
+          options={{
+            title: 'Pusat Bantuan',
+            href: null,
+          }}
+        />
+        <Tabs.Screen
+          name="settings"
+          options={{
+            title: 'Pengaturan',
+            href: null,
           }}
         />
       </Tabs>

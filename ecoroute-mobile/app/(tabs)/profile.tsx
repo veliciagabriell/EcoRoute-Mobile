@@ -53,13 +53,13 @@ export default function ProfileScreen() {
       <Header 
         title="Profil Akun" 
         showBack={false}
-        onMenuPress={() => console.log('Menu pressed')}
+
         onProfilePress={() => console.log('Profile pressed')}
       />
 
       <View style={[styles.subtitleContainer, { paddingHorizontal: 20 }]}>
         <ThemedText style={[manrope, {
-          fontWeight: '700',
+          fontWeight: '600',
           fontSize: 30,
           lineHeight: 38,
           letterSpacing: -0.6,

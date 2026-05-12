@@ -4,13 +4,14 @@ import { Colors } from '@/constants/theme';
 import { Header } from '@/components/header';
 import { ScreenLayout } from '@/components/screen-layout';
 import { Card } from '@/components/card';
-import { Button } from '@/components/button';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useAuth } from '@/contexts/auth-context';
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+  const { user } = useAuth();
 
   const statusCards = [
     {
@@ -77,15 +78,17 @@ export default function HomeScreen() {
       <Header 
         title="EcoRoute" 
         showBack={false}
-        onMenuPress={() => console.log('Menu pressed')}
+
         onProfilePress={() => console.log('Profile pressed')}
       />
 
       <ScreenLayout scrollable={true}>
         {/* Welcome Section */}
         <View style={styles.welcomeSection}>
-          <ThemedText style={styles.greeting}>Halo, Admin User</ThemedText>
-          <ThemedText style={[styles.subtitle, { color: colors.textSecondary }]}>
+          <ThemedText style={[styles.greeting, { fontFamily: 'Manrope-Bold' }]}>
+            Halo, {user?.namaLengkap || 'Admin'}
+          </ThemedText>
+          <ThemedText style={[styles.subtitle, { color: colors.textSecondary, fontFamily: 'Manrope' }]}>
             Here's the current overview of your fleet and collection points.
           </ThemedText>
         </View>
