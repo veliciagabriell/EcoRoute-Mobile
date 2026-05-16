@@ -7,9 +7,26 @@ import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '@/components/header';
+import { useEffect, useState } from 'react';
+import { get } from '@/utils/api';
 
 export default function TPSDetailScreen() {
   const router = useRouter();
+  const [tpsList, setTpsList] = useState<any[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const data = await get('/tps');
+        if (mounted) setTpsList(data || []);
+      } catch (err) {
+        console.warn('Failed to fetch TPS list', err);
+      }
+    }
+    load();
+    return () => { mounted = false };
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -20,6 +37,17 @@ export default function TPSDetailScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Simple TPS list fetched from backend */}
+        {tpsList.length > 0 && (
+          <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
+            {tpsList.map((item: any) => (
+              <TouchableOpacity key={item.tps.id} style={{ padding: 12, backgroundColor: '#FFFFFF', borderRadius: 8, marginBottom: 8 }} onPress={() => router.push((`/(tabs)/explore/${item.tps.id}`) as any)}>
+                <ThemedText style={{ fontWeight: '600' }}>{item.tps.name}</ThemedText>
+                <ThemedText style={{ color: '#666' }}>{item.tps.area} — {item.latestReading ? `${item.latestReading.fullness_pct}%` : 'No data'}</ThemedText>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         <View style={styles.statusBanner}>
           <View style={styles.statusIconBox}>
             <MaterialIcons name="warning" size={16} color="#FFFFFF" />

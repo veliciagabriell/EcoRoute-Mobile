@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { post, setAccessToken } from '@/utils/api';
 
 interface User {
   id: string;
@@ -23,7 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [registeredUsers, setRegisteredUsers] = useState<Array<{ email: string; password: string; namaLengkap: string; role: string }>>([
-    // Demo user for testing
+    // Demo user for testing (fallback)
     { email: 'admin@ecoroute.com', password: 'password123', namaLengkap: 'Admin User', role: 'admin' }
   ]);
 
@@ -38,26 +39,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
-    
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Check if user exists in registered users
-    const foundUser = registeredUsers.find(u => u.email === email && u.password === password);
-    
-    if (!foundUser) {
+    try {
+      const data = await post('/auth/login', { email, password });
+      if (data && data.access_token) {
+        setAccessToken(data.access_token);
+        // Optionally decode token to get user info or call profile endpoint
+        setUser({ id: email, email, namaLengkap: email, role: 'user' });
+        setIsSignedIn(true);
+      } else {
+        throw new Error('Invalid response from server');
+      }
+    } catch (err) {
+      // fallback to local demo users
+      const foundUser = registeredUsers.find(u => u.email === email && u.password === password);
+      if (foundUser) {
+        setUser({ id: email, email: foundUser.email, namaLengkap: foundUser.namaLengkap, role: (foundUser.role as 'admin' | 'user') });
+        setIsSignedIn(true);
+      } else {
+        setIsLoading(false);
+        throw err;
+      }
+    } finally {
       setIsLoading(false);
-      throw new Error('Email atau password salah');
     }
-
-    setUser({
-      id: email,
-      email: foundUser.email,
-      namaLengkap: foundUser.namaLengkap,
-      role: (foundUser.role as 'admin' | 'user'),
-    });
-    setIsSignedIn(true);
-    setIsLoading(false);
   };
 
   const register = async (email: string, password: string, namaLengkap: string, role: string) => {
