@@ -1,0 +1,54 @@
+openapi: 3.0.0
+paths:
+  /routes/optimal:
+    get:
+      tags:
+        - Routes
+      summary: Dapatkan rute optimal TPS
+      description: |
+        Mengembalikan urutan TPS optimal menggunakan greedy nearest-neighbor.
+        Jika `withMaps=true`, backend akan mengambil geometry rute dari OSRM (gratis).
+      parameters:
+        - name: area
+          in: query
+          description: Filter berdasarkan area (opsional)
+          schema:
+            type: string
+        - name: startLat
+          in: query
+          description: Titik awal (latitude)
+          schema:
+            type: number
+        - name: startLng
+          in: query
+          description: Titik awal (longitude)
+          schema:
+            type: number
+        - name: endLat
+          in: query
+          description: Titik akhir (latitude)
+          schema:
+            type: number
+        - name: endLng
+          in: query
+          description: Titik akhir (longitude)
+          schema:
+            type: number
+        - name: withMaps
+          in: query
+          description: Ambil geometry rute dari OSRM
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Rute optimal berhasil diambil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteResponse'
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+        - BearerAuth: []

@@ -28,6 +28,12 @@ const options = {
           bearerFormat: 'JWT',
           description: 'Masukkan JWT access token. Format: Bearer <token>',
         },
+        ApiKeyAuth: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'x-api-key',
+          description: 'API key untuk endpoint IoT',
+        },
       },
       schemas: {
         // ─── Auth ──────────────────────────────────────────────
@@ -166,6 +172,60 @@ const options = {
           properties: {
             tps: { $ref: '#/components/schemas/TPS' },
             latestReading: { $ref: '#/components/schemas/SensorReading' },
+          },
+        },
+        RouteStop: {
+          type: 'object',
+          properties: {
+            order: { type: 'integer', example: 1 },
+            id: { type: 'string', format: 'uuid' },
+            name: { type: 'string', example: 'TPS Tamansari' },
+            latitude: { type: 'number', example: -6.90035 },
+            longitude: { type: 'number', example: 107.60657 },
+            latestReading: { $ref: '#/components/schemas/SensorReading' },
+            distanceFromPrevKm: { type: 'number', example: 0.8 },
+          },
+        },
+        RouteMap: {
+          type: 'object',
+          properties: {
+            distance_m: { type: 'number', example: 4210 },
+            duration_s: { type: 'number', example: 1020 },
+            geometry: {
+              type: 'object',
+              description: 'GeoJSON LineString from OSRM',
+            },
+            legs: {
+              type: 'array',
+              items: { type: 'object' },
+            },
+            error: { type: 'string', nullable: true },
+            message: { type: 'string', nullable: true },
+          },
+        },
+        RouteResponse: {
+          type: 'object',
+          properties: {
+            start: {
+              type: 'object',
+              properties: {
+                lat: { type: 'number', example: -6.89148 },
+                lng: { type: 'number', example: 107.6107 },
+              },
+            },
+            end: {
+              type: 'object',
+              properties: {
+                lat: { type: 'number', example: -6.90035 },
+                lng: { type: 'number', example: 107.60657 },
+              },
+            },
+            totalDistanceKm: { type: 'number', example: 12.4 },
+            stops: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/RouteStop' },
+            },
+            maps: { $ref: '#/components/schemas/RouteMap' },
           },
         },
         // ─── Error ─────────────────────────────────────────────

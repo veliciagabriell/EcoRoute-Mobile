@@ -1,0 +1,10 @@
+openapi: 3.0.0
+paths:
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      responses:
+        '200':
+          description: Service healthy

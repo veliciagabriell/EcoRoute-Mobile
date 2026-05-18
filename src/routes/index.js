@@ -24,6 +24,7 @@ router.get('/auth/me', authRequired, authController.me);
 
 // TPS
 router.get('/tps', authRequired, tpsController.list);
+router.get('/tps/nearby', authRequired, tpsController.getNearby);
 router.get('/tps/with-readings', authRequired, tpsController.getAllWithReadings);
 router.post('/tps', authRequired, permit('admin'), tpsController.create);
 router.get('/tps/:id', authRequired, tpsController.getOne);

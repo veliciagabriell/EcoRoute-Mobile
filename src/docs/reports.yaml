@@ -1,0 +1,48 @@
+openapi: 3.0.0
+paths:
+  /reports:
+    post:
+      tags:
+        - Reports
+      summary: Buat laporan warga
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Laporan berhasil dibuat
+        '401':
+          description: Unauthorized
+    get:
+      tags:
+        - Reports
+      summary: Daftar laporan (admin)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Laporan berhasil diambil
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+  /reports/{id}:
+    patch:
+      tags:
+        - Reports
+      summary: Update status laporan (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Laporan berhasil diupdate
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden

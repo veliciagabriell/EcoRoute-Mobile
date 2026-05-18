@@ -116,6 +116,56 @@ paths:
       security:
         - BearerAuth: []
 
+  /tps/nearby:
+    get:
+      tags:
+        - TPS
+      summary: Dapatkan TPS terdekat
+      description: Mengambil TPS terdekat berdasarkan koordinat (lat/lng).
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: radiusKm
+          in: query
+          schema:
+            type: number
+            default: 5
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: area
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: TPS terdekat berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TPSWithReading'
+                  count:
+                    type: integer
+        '401':
+          description: Unauthorized
+      security:
+        - BearerAuth: []
+
   /tps/{id}:
     get:
       tags:

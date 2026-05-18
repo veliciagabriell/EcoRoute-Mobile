@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView, 
-  Dimensions, 
-  ActivityIndicator 
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  View,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+  ActivityIndicator
 } from 'react-native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
-import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialIcons } from '@expo/vector-icons';
+import MapView, { Marker, Polyline, UrlTile } from 'react-native-maps';
+import { get } from '@/utils/api';
 import { 
   useFonts, 
   Manrope_400Regular, 
@@ -25,6 +27,62 @@ export default function TPSMapScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [routeStops, setRouteStops] = useState<any[]>([]);
+  const [routeLine, setRouteLine] = useState<{ latitude: number; longitude: number }[]>([]);
+  const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'normal'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const fallbackStops = useMemo(
+    () => [
+      {
+        id: 'start-itb',
+        name: 'ITB Ganesha (Start)',
+        latitude: -6.89148,
+        longitude: 107.6107,
+        status: 'start',
+        latestReading: {
+          fullness_pct: 10,
+          alert_level: 'normal',
+        },
+      },
+      {
+        id: 'tps-sarijadi',
+        name: 'TPS Sarijadi',
+        latitude: -6.8929,
+        longitude: 107.6079,
+        status: 'critical',
+        latestReading: {
+          fullness_pct: 92,
+          alert_level: 'critical',
+        },
+      },
+      {
+        id: 'tps-dago',
+        name: 'TPS Dago',
+        latitude: -6.8952,
+        longitude: 107.6131,
+        status: 'warning',
+        latestReading: {
+          fullness_pct: 70,
+          alert_level: 'warning',
+        },
+      },
+      {
+        id: 'tps-tamansari',
+        name: 'TPS Tamansari (End)',
+        latitude: -6.90035,
+        longitude: 107.60657,
+        status: 'end',
+        latestReading: {
+          fullness_pct: 30,
+          alert_level: 'normal',
+        },
+      },
+    ],
+    []
+  );
+
   // 1. Load Manrope Fonts
   const [fontsLoaded] = useFonts({
     'Manrope': Manrope_400Regular,
@@ -34,21 +92,124 @@ export default function TPSMapScreen() {
 
   const manrope = { fontFamily: 'Manrope' };
 
+  useEffect(() => {
+    let isActive = true;
+
+    const loadRoute = async () => {
+      setIsLoading(true);
+      try {
+        const [routeData, nearbyData] = await Promise.all([
+          get('/routes/optimal?withMaps=true'),
+          get('/tps/nearby?lat=-6.89148&lng=107.6107&radiusKm=5&limit=12'),
+        ]);
+
+        const stops = nearbyData?.data
+          ?.map((item: any, index: number) => ({
+            id: item?.tps?.id || `nearby-${index}`,
+            name: item?.tps?.name,
+            latitude: Number(item?.tps?.latitude),
+            longitude: Number(item?.tps?.longitude),
+            latestReading: item?.latestReading,
+            distanceFromPrevKm: item?.distance_km,
+          }))
+          .filter((stop: any) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
+
+        const fallbackRouteStops = routeData?.stops
+          ?.map((stop: any, index: number) => ({
+            ...stop,
+            id: stop.id || `stop-${index}`,
+          }))
+          .filter((stop: any) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
+
+        const geometry = routeData?.maps?.geometry?.coordinates || [];
+        const line = geometry.map((coord: [number, number]) => ({
+          latitude: coord[1],
+          longitude: coord[0],
+        }));
+
+        if (isActive) {
+          setRouteStops(stops?.length ? stops : (fallbackRouteStops?.length ? fallbackRouteStops : fallbackStops));
+          setRouteLine(line);
+        }
+      } catch (err) {
+        if (isActive) {
+          setRouteStops(fallbackStops);
+          setRouteLine([]);
+        }
+      } finally {
+        if (isActive) setIsLoading(false);
+      }
+    };
+
+    loadRoute();
+
+    return () => {
+      isActive = false;
+    };
+  }, [fallbackStops]);
+
+  const mapRegion = useMemo(() => {
+    const points = routeStops.length ? routeStops : fallbackStops;
+    const latitudes = points.map((p) => p.latitude);
+    const longitudes = points.map((p) => p.longitude);
+    const minLat = Math.min(...latitudes);
+    const maxLat = Math.max(...latitudes);
+    const minLng = Math.min(...longitudes);
+    const maxLng = Math.max(...longitudes);
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max(0.01, maxLat - minLat + 0.01),
+      longitudeDelta: Math.max(0.01, maxLng - minLng + 0.01),
+    };
+  }, [routeStops, fallbackStops]);
+
   if (!fontsLoaded) {
     return <ActivityIndicator size="large" style={{ flex: 1 }} color="#002045" />;
   }
 
+  const visibleStops = routeStops.length ? routeStops : fallbackStops;
+  const polylineCoords = routeLine.length
+    ? routeLine
+    : visibleStops.map((stop) => ({ latitude: stop.latitude, longitude: stop.longitude }));
+
+  const mapStatus = (stop: any) => {
+    const level = stop?.latestReading?.alert_level || stop?.status || 'normal';
+    if (level === 'critical') return { key: 'critical', label: 'KRITIS', color: '#BA1A1A', bg: '#FFDAD6' };
+    if (level === 'warning') return { key: 'warning', label: 'WASPADA', color: '#D97706', bg: '#FEF3C7' };
+    return { key: 'normal', label: 'NORMAL', color: '#2E7D32', bg: '#E8F5E9' };
+  };
+
+  const filteredStops = visibleStops.filter((stop) => {
+    const status = mapStatus(stop);
+  const matchFilter = filter === 'all' || status.key === filter;
+    const matchSearch = stop?.name?.toLowerCase?.().includes(searchQuery.toLowerCase());
+    return matchFilter && matchSearch;
+  });
+
   return (
     <View style={styles.container}>
-      {/* Background Map Placeholder */}
+      {/* OpenStreetMap View */}
       <View style={styles.mapContainer}>
-        {/* Di sini nantinya tempat library MapView. 
-            Sekarang menggunakan placeholder visual rute sesuai Figma */}
-        <MapMarker top="34%" left="43%" color="#BA1A1A" text="K" isLarge />
-        <MapMarker top="24%" left="18%" color="#BA1A1A" text="K" />
-        <MapMarker top="49%" left="68%" color="#BA1A1A" text="K" />
-        <MapMarker top="39%" left="58%" color="#4BB278" text="N" />
-        <MapMarker top="44%" left="23%" color="#F59E0B" text="W" />
+        <MapView style={styles.map} initialRegion={mapRegion}>
+          <UrlTile urlTemplate="https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png" maximumZ={19} />
+          {filteredStops.map((stop) => (
+            <Marker
+              key={stop.id}
+              coordinate={{ latitude: stop.latitude, longitude: stop.longitude }}
+              title={stop.name}
+              pinColor={stop.status === 'critical' ? '#BA1A1A' : stop.status === 'warning' ? '#F59E0B' : '#4BB278'}
+            />
+          ))}
+          <Polyline coordinates={polylineCoords} strokeColor="#1A365D" strokeWidth={4} />
+        </MapView>
+
+        {isLoading && (
+          <View style={styles.mapLoadingOverlay}>
+            <ActivityIndicator size="large" color="#1A365D" />
+            <ThemedText style={styles.mapLoadingText}>Memuat rute...</ThemedText>
+          </View>
+        )}
       </View>
 
       {/* Top Search & Filter Area */}
@@ -59,6 +220,8 @@ export default function TPSMapScreen() {
             placeholder="Cari TPS..." 
             placeholderTextColor="#74777F"
             style={[manrope, styles.searchInput]} 
+            value={searchQuery}
+            onChangeText={setSearchQuery}
           />
           <TouchableOpacity style={styles.tuneButton}>
             <MaterialIcons name="tune" size={18} color="#002045" />
@@ -71,9 +234,10 @@ export default function TPSMapScreen() {
           style={styles.filterContainer}
           contentContainerStyle={styles.filterContent}
         >
-          <FilterChip label="Kritis" color="#BA1A1A" />
-          <FilterChip label="Waspada" color="#F59E0B" />
-          <FilterChip label="Normal" color="#4BB278" />
+          <FilterChip label="Semua" color="#1A365D" active={filter === 'all'} onPress={() => setFilter('all')} />
+          <FilterChip label="Kritis" color="#BA1A1A" active={filter === 'critical'} onPress={() => setFilter('critical')} />
+          <FilterChip label="Waspada" color="#F59E0B" active={filter === 'warning'} onPress={() => setFilter('warning')} />
+          <FilterChip label="Normal" color="#4BB278" active={filter === 'normal'} onPress={() => setFilter('normal')} />
         </ScrollView>
       </View>
 
@@ -93,23 +257,23 @@ export default function TPSMapScreen() {
         </View>
 
         <ScrollView style={styles.sheetList}>
-          <TPSItem 
-            name="TPS Kebon Jeruk #04" 
-            dist="1.2 km" 
-            percent="98% Penuh" 
-            status="KRITIS" 
-            statusColor="#BA1A1A"
-            bgIcon="#FFDAD6"
-          />
-          <TPSItem 
-            name="TPS Blok M" 
-            dist="2.5 km" 
-            percent="75% Penuh" 
-            status="WASPADA" 
-            statusColor="#D97706"
-            bgIcon="#FEF3C7"
-            icon="warning"
-          />
+          {filteredStops.map((stop, index) => {
+            const status = mapStatus(stop);
+            const distance = stop?.distanceFromPrevKm;
+            const fullness = stop?.latestReading?.fullness_pct;
+            return (
+              <TPSItem
+                key={stop.id || `${stop.name}-${index}`}
+                name={stop.name}
+                dist={Number.isFinite(distance) ? `${distance.toFixed(1)} km` : '-'}
+                percent={Number.isFinite(fullness) ? `${Number(fullness).toFixed(0)}% Penuh` : '-'}
+                status={status.label}
+                statusColor={status.color}
+                bgIcon={status.bg}
+                icon={status.label === 'KRITIS' ? 'delete-outline' : status.label === 'WASPADA' ? 'warning' : 'check-circle'}
+              />
+            );
+          })}
         </ScrollView>
       </View>
     </View>
@@ -118,29 +282,9 @@ export default function TPSMapScreen() {
 
 // --- Sub Components ---
 
-function MapMarker({ top, left, color, text, isLarge }: any) {
-  const size = isLarge ? 40 : 32;
+function FilterChip({ label, color, active, onPress }: any) {
   return (
-    <View style={[styles.markerContainer, { top, left }]}>
-      <View style={[
-        styles.markerPin, 
-        { 
-          backgroundColor: color, 
-          width: size, 
-          height: size, 
-          borderRadius: size / 2,
-          borderBottomRightRadius: 2,
-        }
-      ]}>
-        <ThemedText style={styles.markerText}>{text}</ThemedText>
-      </View>
-    </View>
-  );
-}
-
-function FilterChip({ label, color }: any) {
-  return (
-    <TouchableOpacity style={styles.chip}>
+    <TouchableOpacity style={[styles.chip, active && styles.chipActive]} onPress={onPress}>
       <View style={[styles.chipDot, { backgroundColor: color }]} />
       <ThemedText style={styles.chipText}>{label}</ThemedText>
     </TouchableOpacity>
@@ -179,6 +323,24 @@ const styles = StyleSheet.create({
   mapContainer: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#E5EEFF', // Placeholder warna peta
+  },
+  map: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  mapLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+  mapLoadingText: {
+    marginTop: 8,
+    color: '#1A365D',
+    fontWeight: '600',
   },
   topArea: {
     position: 'absolute',
@@ -234,6 +396,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     elevation: 2,
+  },
+  chipActive: {
+    borderColor: '#1A365D',
+    borderWidth: 1.5,
   },
   chipDot: {
     width: 10,

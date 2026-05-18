@@ -163,6 +163,44 @@ class TPSLocations {
       throw err;
     }
   }
+
+  /**
+   * Ambil TPS terdekat berdasarkan koordinat
+   */
+  static async getNearby({ lat, lng, radiusKm = 5, limit = 10, area = null }) {
+    try {
+      const params = [lat, lng, radiusKm, limit];
+      const distanceExpr = `
+        (6371 * acos(
+          cos(radians($1)) * cos(radians(latitude)) * cos(radians(longitude) - radians($2))
+          + sin(radians($1)) * sin(radians(latitude))
+        ))
+      `;
+
+      let query = `
+        SELECT * FROM (
+          SELECT t.*, ${distanceExpr} AS distance_km
+          FROM tps_locations t
+        ) sub
+      `;
+
+      if (area) {
+        query += ' WHERE sub.area = $5';
+        params.push(area);
+        query += ` AND sub.distance_km <= $3`;
+      } else {
+        query += ' WHERE sub.distance_km <= $3';
+      }
+
+      query += ' ORDER BY sub.distance_km ASC LIMIT $4';
+
+      const result = await pool.query(query, params);
+      return result.rows;
+    } catch (err) {
+      console.error('[TPSLocations.getNearby] Error:', err);
+      throw err;
+    }
+  }
 }
 
 module.exports = TPSLocations;

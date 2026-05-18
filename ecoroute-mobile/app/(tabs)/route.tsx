@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
@@ -6,6 +6,7 @@ import { Header } from '@/components/header';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router'; // 1. Import useRouter
+import { get } from '@/utils/api';
 import { 
   useFonts, 
   Manrope_400Regular, 
@@ -20,6 +21,8 @@ export default function RouteScreen() {
   const router = useRouter(); // 2. Inisialisasi router
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
+  const [routeStops, setRouteStops] = useState<any[]>([]);
+  const [summary, setSummary] = useState({ distanceKm: 0, durationMin: 0 });
 
   const [fontsLoaded] = useFonts({
     'Manrope': Manrope_400Regular,
@@ -30,6 +33,29 @@ export default function RouteScreen() {
 
   const manrope = { fontFamily: 'Manrope' };
   const inter = { fontFamily: 'Inter' };
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const data = await get('/routes/optimal?withMaps=true');
+  const stops = (data?.stops || []).slice().sort((a: any, b: any) => (a?.order || 0) - (b?.order || 0));
+        const distanceKm = data?.maps?.distance_m ? data.maps.distance_m / 1000 : data?.totalDistanceKm || 0;
+        const durationMin = data?.maps?.duration_s ? data.maps.duration_s / 60 : 0;
+        if (active) {
+          setRouteStops(stops);
+          setSummary({ distanceKm, durationMin });
+        }
+      } catch {
+        if (active) {
+          setRouteStops([]);
+          setSummary({ distanceKm: 0, durationMin: 0 });
+        }
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, []);
 
   if (!fontsLoaded) {
     return (
@@ -70,7 +96,7 @@ export default function RouteScreen() {
         <View style={styles.summaryBento}>
           <View style={styles.bentoItem}>
             <MaterialCommunityIcons name="map-marker-distance" size={20} color="#002045" />
-            <ThemedText style={[manrope, styles.bentoValue]}>12.4</ThemedText>
+            <ThemedText style={[manrope, styles.bentoValue]}>{summary.distanceKm.toFixed(1)}</ThemedText>
             <ThemedText style={[manrope, styles.bentoLabel]}>JARAK (KM)</ThemedText>
           </View>
           
@@ -78,7 +104,7 @@ export default function RouteScreen() {
 
           <View style={styles.bentoItem}>
             <MaterialCommunityIcons name="clock-outline" size={18} color="#002045" />
-            <ThemedText style={[manrope, styles.bentoValue]}>45</ThemedText>
+            <ThemedText style={[manrope, styles.bentoValue]}>{Math.round(summary.durationMin)}</ThemedText>
             <ThemedText style={[manrope, styles.bentoLabel]}>WAKTU (MIN)</ThemedText>
           </View>
 
@@ -86,7 +112,7 @@ export default function RouteScreen() {
 
           <View style={styles.bentoItem}>
             <MaterialCommunityIcons name="flag-outline" size={16} color="#002045" />
-            <ThemedText style={[manrope, styles.bentoValue]}>5</ThemedText>
+            <ThemedText style={[manrope, styles.bentoValue]}>{routeStops.length}</ThemedText>
             <ThemedText style={[manrope, styles.bentoLabel]}>TITIK TPS</ThemedText>
           </View>
         </View>
@@ -98,45 +124,23 @@ export default function RouteScreen() {
           <View style={styles.listContainer}>
             <View style={styles.connectingLine} />
 
-            <RouteItem 
-              number="1" 
-              name="TPS Kebon Jeruk #04" 
-              status="Kritis" 
-              desc="Kapasitas 95% • 1.2 km" 
-              statusType="danger"
-            />
-
-            <RouteItem 
-              number="2" 
-              name="TPS Blok M" 
-              status="Kritis" 
-              desc="Kapasitas 88% • 3.5 km" 
-              statusType="danger"
-            />
-
-            <RouteItem 
-              number="3" 
-              name="TPS Merdeka" 
-              status="Waspada" 
-              desc="Kapasitas 75% • 5.1 km" 
-              statusType="warning"
-            />
-
-            <RouteItem 
-              number="4" 
-              name="TPS Sudirman" 
-              status="Normal" 
-              desc="Kapasitas 40% • 8.2 km" 
-              statusType="success"
-            />
-
-            <RouteItem 
-              number="5" 
-              name="TPA Bantar Gebang" 
-              status="Normal" 
-              desc="Tujuan Akhir • 12.4 km" 
-              statusType="success"
-            />
+            {routeStops.map((stop: any, index: number) => {
+              const level = stop?.latestReading?.alert_level || 'normal';
+              const statusType = level === 'critical' ? 'danger' : level === 'warning' ? 'warning' : 'success';
+              const statusLabel = level === 'critical' ? 'Kritis' : level === 'warning' ? 'Waspada' : 'Normal';
+              const fullness = stop?.latestReading?.fullness_pct;
+              const distance = stop?.distanceFromPrevKm;
+              return (
+                <RouteItem
+                  key={stop.id || `${stop.name}-${index}`}
+                  number={`${index + 1}`}
+                  name={stop.name}
+                  status={statusLabel}
+                  desc={`${Number.isFinite(fullness) ? `${Number(fullness).toFixed(0)}%` : '-'} Penuh • ${Number.isFinite(distance) ? `${distance.toFixed(1)} km` : '-'}`}
+                  statusType={statusType}
+                />
+              );
+            })}
           </View>
         </View>
       </ScrollView>

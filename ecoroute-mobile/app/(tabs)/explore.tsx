@@ -143,7 +143,7 @@ export default function TPSDetailScreen() {
             </View>
             <ThemedText style={styles.scheduleSubtitle}>Truk B-1234-XYZ</ThemedText>
             <ThemedText style={styles.scheduleText}>Sedang menuju lokasi. Perkiraan tiba dalam 15 menit.</ThemedText>
-            <TouchableOpacity style={styles.outlineButton}>
+            <TouchableOpacity style={styles.outlineButton} onPress={() => router.push('/(tabs)/map')}>
               <ThemedText style={styles.outlineButtonText}>Lacak Truk</ThemedText>
             </TouchableOpacity>
           </View>
@@ -193,8 +193,8 @@ export default function TPSDetailScreen() {
               </View>
             </View>
           </View>
-          <TouchableOpacity style={styles.fullWidthOutlineButton}>
-            <ThemedText style={styles.fullWidthOutlineButtonText}>Lihat Semua Riwayat</ThemedText>
+          <TouchableOpacity style={styles.fullWidthOutlineButton} onPress={() => router.push('/(tabs)/map')}>
+            <ThemedText style={styles.fullWidthOutlineButtonText}>Lihat Peta Pengangkutan</ThemedText>
           </TouchableOpacity>
         </View>
       </ScrollView>

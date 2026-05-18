@@ -238,6 +238,85 @@ async function getStatistics(req, res, next) {
 
 /**
  * @swagger
+ * /tps/nearby:
+ *   get:
+ *     tags: [TPS]
+ *     summary: Dapatkan TPS terdekat
+ *     parameters:
+ *       - in: query
+ *         name: lat
+ *         required: true
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: lng
+ *         required: true
+ *         schema:
+ *           type: number
+ *       - in: query
+ *         name: radiusKm
+ *         schema:
+ *           type: number
+ *           default: 5
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *       - in: query
+ *         name: area
+ *         schema:
+ *           type: string
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: TPS terdekat berhasil diambil
+ */
+async function getNearby(req, res, next) {
+  try {
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lng);
+    const radiusKm = Number(req.query.radiusKm || 5);
+    const limit = Number(req.query.limit || 10);
+    const area = req.query.area || null;
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.status(400).json({ error: 'lat dan lng wajib diisi' });
+    }
+
+    const tpsList = await TPSLocations.getNearby({ lat, lng, radiusKm, limit, area });
+    const result = [];
+    for (const t of tpsList) {
+      const cache = await redis.get(`latest_reading:${t.id}`);
+      let latest = null;
+      if (cache) latest = JSON.parse(cache);
+      else latest = await sensorModel.getLatestByTps(t.id);
+      result.push({ tps: t, latestReading: latest, distance_km: t.distance_km });
+    }
+
+    const priority = (reading) => {
+      const level = reading?.alert_level || 'normal';
+      if (level === 'critical') return 3;
+      if (level === 'warning') return 2;
+      return 1;
+    };
+
+    result.sort((a, b) => {
+      const pa = priority(a.latestReading);
+      const pb = priority(b.latestReading);
+      if (pa !== pb) return pb - pa;
+      return (a.distance_km || 0) - (b.distance_km || 0);
+    });
+
+    res.json({ data: result, count: result.length });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * @swagger
  * /tps:
  *   post:
  *     tags: [TPS]
@@ -436,6 +515,7 @@ module.exports = {
   getOne,
   getReadings,
   getStatistics,
+  getNearby,
   create,
   update,
   deleteTps

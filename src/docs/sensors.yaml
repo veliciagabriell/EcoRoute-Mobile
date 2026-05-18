@@ -1,0 +1,33 @@
+openapi: 3.0.0
+paths:
+  /sensors/status:
+    get:
+      tags:
+        - Sensors
+      summary: Status sensor terbaru
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Status sensor berhasil diambil
+        '401':
+          description: Unauthorized
+  /sensors/tps/{tps_id}/alert-history:
+    get:
+      tags:
+        - Sensors
+      summary: Riwayat alert TPS
+      parameters:
+        - name: tps_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Riwayat alert berhasil diambil
+        '401':
+          description: Unauthorized

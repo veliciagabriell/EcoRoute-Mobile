@@ -1,0 +1,16 @@
+openapi: 3.0.0
+paths:
+  /analytics/trends:
+    get:
+      tags:
+        - Analytics
+      summary: Tren analitik (admin)
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Tren analitik berhasil diambil
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden

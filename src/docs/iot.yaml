@@ -1,0 +1,14 @@
+openapi: 3.0.0
+paths:
+  /iot/data:
+    post:
+      tags:
+        - IoT
+      summary: Kirim data IoT via HTTP
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Data IoT diterima
+        '401':
+          description: Unauthorized
