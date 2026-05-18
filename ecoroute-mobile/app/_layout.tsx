@@ -1,8 +1,9 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { View } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
 import { 
   useFonts, 
@@ -15,7 +16,9 @@ import {
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/contexts/auth-context';
-import SplashScreen from '@/components/splash-screen';
+
+// Keep the splash screen visible while we fetch resources
+SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -26,7 +29,7 @@ function RootLayoutContent() {
   const colors = Colors[colorScheme ?? 'light'];
   const { isLoading, isSignedIn, user } = useAuth();
   
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Manrope: Manrope_400Regular,
     'Manrope-Medium': Manrope_500Medium,
     'Manrope-SemiBold': Manrope_600SemiBold,
@@ -36,27 +39,40 @@ function RootLayoutContent() {
   const segments = useSegments();
   const router = useRouter();
 
+  // Hide splash screen once fonts are loaded
   useEffect(() => {
-    if (isLoading || !fontsLoaded) return;
-
-    const inAuthGroup = segments[0] === 'login' || segments[0] === 'register';
-
-    if (!isSignedIn && !inAuthGroup) {
-      // Redirect to login if user is not signed in and trying to access other screens
-      router.replace('/login');
-    } else if (isSignedIn && inAuthGroup) {
-      // Redirect to specific tab based on role
-      if (user?.role === 'admin') {
-        router.replace('/(tabs)');
-      } else {
-        router.replace('/(tabs)/profile');
-      }
+    if (fontError) throw fontError;
+    if (fontsLoaded) {
+      console.log('[Layout] Fonts loaded, hiding splash screen');
+      SplashScreen.hideAsync();
     }
-  }, [isLoading, isSignedIn, user, segments, router, fontsLoaded]);
+  }, [fontsLoaded, fontError]);
 
-  // Show splash screen while checking auth
-  if (isLoading || !fontsLoaded) {
-    return <SplashScreen />;
+  useEffect(() => {
+    if (!fontsLoaded) {
+      console.log('[Navigation] Waiting for fonts...');
+      return;
+    }
+
+    const inAuthGroup = segments?.[0] === 'login' || segments?.[0] === 'register';
+    console.log('[Navigation] Check:', { isSignedIn, inAuthGroup, segments: segments?.[0], isLoading });
+
+    // Jika sudah login, redirect ke dashboard
+    if (isSignedIn && inAuthGroup) {
+      const target = user?.role === 'admin' ? '/(tabs)' : '/(tabs)/profile';
+      console.log('[Navigation] Redirecting to:', target);
+      router.replace(target);
+    }
+    // Jika belum login dan bukan di auth screen, redirect ke login
+    else if (!isSignedIn && !inAuthGroup) {
+      console.log('[Navigation] Redirecting to login');
+      router.replace('/login');
+    }
+  }, [fontsLoaded, isSignedIn, user?.role, segments, router]);
+
+  // Show minimal UI while fonts load
+  if (!fontsLoaded) {
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
   // Always return the main Stack so expo-router's tree is preserved!

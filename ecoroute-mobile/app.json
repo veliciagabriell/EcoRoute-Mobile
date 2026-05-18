@@ -7,6 +7,9 @@
     "icon": "./assets/images/icon.png",
     "scheme": "ecoroutemobile",
     "userInterfaceStyle": "automatic",
+    "extra": {
+      "API_URL": "http://10.0.2.2:3000/api"
+    },
     "ios": {
       "supportsTablet": true
     },

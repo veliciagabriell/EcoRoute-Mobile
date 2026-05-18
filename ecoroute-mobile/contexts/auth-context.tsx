@@ -1,11 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { post, setAccessToken } from '@/utils/api';
 
 interface User {
   id: string;
   email: string;
-  namaLengkap: string;
-  role: 'admin' | 'user';
+  name: string;
+  role: 'umum' | 'petugas' | 'admin';
+  work_area?: string | null;
 }
 
 interface AuthContextType {
@@ -20,68 +21,117 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [registeredUsers, setRegisteredUsers] = useState<Array<{ email: string; password: string; namaLengkap: string; role: string }>>([
-    // Demo user for testing (fallback)
-    { email: 'admin@ecoroute.com', password: 'password123', namaLengkap: 'Admin User', role: 'admin' }
-  ]);
+  const isMountedRef = useRef(true);
 
-  // Simulate app startup check
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 2000);
-
-    return () => clearTimeout(timer);
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
+  /**
+   * Login
+   */
   const login = async (email: string, password: string) => {
+    if (!isMountedRef.current) {
+      console.log('[Auth] Component unmounted, skipping login');
+      return;
+    }
     setIsLoading(true);
+    console.log('[Auth] Starting login for:', email);
     try {
       const data = await post('/auth/login', { email, password });
-      if (data && data.access_token) {
+      console.log('[Auth] Login response:', data);
+      
+      if (!isMountedRef.current) {
+        console.log('[Auth] Component unmounted after login response');
+        return;
+      }
+      
+      if (data?.access_token && data?.user) {
         setAccessToken(data.access_token);
-        // Optionally decode token to get user info or call profile endpoint
-        setUser({ id: email, email, namaLengkap: email, role: 'user' });
+        console.log('[Auth] Setting user:', data.user);
+        setUser({
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          role: data.user.role,
+          work_area: data.user.work_area,
+        });
         setIsSignedIn(true);
       } else {
-        throw new Error('Invalid response from server');
+        throw new Error('Response tidak valid');
       }
-    } catch (err) {
-      // fallback to local demo users
-      const foundUser = registeredUsers.find(u => u.email === email && u.password === password);
-      if (foundUser) {
-        setUser({ id: email, email: foundUser.email, namaLengkap: foundUser.namaLengkap, role: (foundUser.role as 'admin' | 'user') });
-        setIsSignedIn(true);
-      } else {
+    } catch (err: any) {
+      console.error('[Auth] Login error:', err);
+      if (isMountedRef.current) {
         setIsLoading(false);
-        throw err;
       }
+      throw err;
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+        console.log('[Auth] Login finished');
+      }
     }
   };
 
+  /**
+   * Register
+   */
   const register = async (email: string, password: string, namaLengkap: string, role: string) => {
+    if (!isMountedRef.current) return;
     setIsLoading(true);
-
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Check if email already exists
-    if (registeredUsers.some(u => u.email === email)) {
-      setIsLoading(false);
-      throw new Error('Email sudah terdaftar');
+    console.log('[Auth] Starting register:', { email, role });
+    try {
+      const backendRole = ['umum', 'petugas', 'admin'].includes(role) ? role : 'umum';
+      const registerResp = await post('/auth/register', {
+        name: namaLengkap,
+        email,
+        password,
+        role: backendRole,
+      });
+      
+      console.log('[Auth] Register response:', registerResp);
+      if (!isMountedRef.current) return;
+      
+      // Auto-login after successful registration
+      console.log('[Auth] Auto-logging in after register...');
+      const loginResp = await post('/auth/login', { email, password });
+      
+      if (!isMountedRef.current) return;
+      
+      if (loginResp?.access_token && loginResp?.user) {
+        setAccessToken(loginResp.access_token);
+        console.log('[Auth] Setting user after register:', loginResp.user);
+        setUser({
+          id: loginResp.user.id,
+          email: loginResp.user.email,
+          name: loginResp.user.name,
+          role: loginResp.user.role,
+          work_area: loginResp.user.work_area,
+        });
+        setIsSignedIn(true);
+      }
+    } catch (err: any) {
+      console.error('[Auth] Register error:', err);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
+      throw err;
+    } finally {
+      if (isMountedRef.current) {
+        setIsLoading(false);
+        console.log('[Auth] Register finished');
+      }
     }
-
-    // Add new user to registered users
-    setRegisteredUsers([...registeredUsers, { email, password, namaLengkap, role }]);
-    setIsLoading(false);
   };
 
   const logout = () => {
+    setAccessToken('');
     setUser(null);
     setIsSignedIn(false);
   };

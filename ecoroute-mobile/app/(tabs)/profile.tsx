@@ -1,5 +1,5 @@
 import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator } from 'react-native';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { Header } from '@/components/header';
@@ -18,6 +18,8 @@ export default function ProfileScreen() {
   const colors = Colors[colorScheme ?? 'light'];
   const { user, logout } = useAuth();
 
+  console.log('[ProfileScreen] Current user:', user);
+
   // 1. Load Fonts di dalam komponen
   const [fontsLoaded] = useFonts({
     Manrope: Manrope_400Regular,
@@ -26,15 +28,30 @@ export default function ProfileScreen() {
   });
   
   const [formData, setFormData] = useState({
-    namaLengkap: user?.namaLengkap || 'Admin User',
-    email: user?.email || 'admin.user@ecoroute.com',
-    nomorTelepon: '+62 812 3456 7890',
-    password: 'password123', // Ganti bulatan statis menjadi text password asli agar bisa diketik
-    bahasa: 'Bahasa Indonesia',
-    kotaOperasional: 'Jakarta Selatan',
+    namaLengkap: '',
+    email: '',
+    nomorTelepon: '+62 ',
+    role: 'umum',
+    workArea: 'Tidak ada',
   });
 
   const [showPassword, setShowPassword] = useState(false);
+
+  // Update form data ketika user berubah
+  useEffect(() => {
+    if (user) {
+      console.log('[ProfileScreen] Updating form with user data:', user);
+      setFormData({
+        namaLengkap: user.name || 'User',
+        email: user.email || '',
+        nomorTelepon: '+62 ',
+        role: user.role || 'umum',
+        workArea: user.work_area || 'Tidak ada',
+      });
+    } else {
+      console.log('[ProfileScreen] No user data available');
+    }
+  }, [user?.id]); // Only update when user ID changes
 
   // Helper style font
   const manrope = { fontFamily: 'Manrope' };
@@ -44,6 +61,18 @@ export default function ProfileScreen() {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#1A365D" />
+      </View>
+    );
+  }
+
+  // 3. Tampilkan loading jika user belum tersedia
+  if (!user) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#1A365D" />
+        <ThemedText style={[manrope, { marginTop: 16, color: '#0D1C2E' }]}>
+          Loading profile...
+        </ThemedText>
       </View>
     );
   }
@@ -126,7 +155,7 @@ export default function ProfileScreen() {
                 color: '#0D1C2E',
                 textAlign: 'center'
               }]}>
-                {user?.namaLengkap || 'Admin User'}
+                {formData.namaLengkap}
               </ThemedText>
               
               <ThemedText style={[manrope, {
@@ -136,7 +165,7 @@ export default function ProfileScreen() {
                 textAlign: 'center',
                 marginTop: 4
               }]}>
-                {user?.email || 'admin.user@ecoroute.com'}
+                {formData.email}
               </ThemedText>
 
               <View style={styles.badge}>
@@ -147,7 +176,7 @@ export default function ProfileScreen() {
                   color: '#00497E',
                   marginLeft: 4
                 }]}>
-                  Akun Terverifikasi
+                  {formData.role === 'petugas' ? 'Petugas' : 'Pengguna'}
                 </ThemedText>
               </View>
             </View>
@@ -201,6 +230,42 @@ export default function ProfileScreen() {
             </View>
           </View>
 
+          {/* Role & Area Section */}
+          <View style={styles.sectionWrapper}>
+            <View style={styles.sectionHeader}>
+              <MaterialIcons name="domain" size={20} color="#1A365D" />
+              <ThemedText style={[manrope, { fontWeight: '600', fontSize: 20, color: '#0D1C2E', marginLeft: 8 }]}>
+                Informasi Peran
+              </ThemedText>
+            </View>
+            
+            <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
+              <View style={{ marginBottom: 16 }}>
+                <ThemedText style={[manrope, styles.inputLabel]}>
+                  Peran
+                </ThemedText>
+                <View style={[styles.textInput, { justifyContent: 'center' }]}>
+                  <ThemedText style={[manrope, { fontSize: 16, color: '#0D1C2E' }]}>
+                    {formData.role === 'petugas' ? 'Petugas' : formData.role === 'admin' ? 'Admin' : 'Pengguna Umum'}
+                  </ThemedText>
+                </View>
+              </View>
+
+              {(formData.role === 'petugas' || formData.role === 'admin') && (
+                <View>
+                  <ThemedText style={[manrope, styles.inputLabel]}>
+                    Area Operasional
+                  </ThemedText>
+                  <View style={[styles.textInput, { justifyContent: 'center' }]}>
+                    <ThemedText style={[manrope, { fontSize: 16, color: '#0D1C2E' }]}>
+                      {formData.workArea || 'Belum ditentukan'}
+                    </ThemedText>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+
           {/* Security Section */}
           <View style={styles.sectionWrapper}>
             <View style={styles.sectionHeader}>
@@ -217,10 +282,9 @@ export default function ProfileScreen() {
               <View style={styles.passwordInputWrapper}>
                 <TextInput
                   style={[manrope, { flex: 1, fontSize: 16, color: '#0D1C2E' }]}
-                  value={formData.password}
+                  placeholder="••••••••"
                   secureTextEntry={!showPassword}
-                  editable={true} // Diubah jadi TRUE agar bisa diketik
-                  onChangeText={(text) => setFormData({ ...formData, password: text })} // Ditambah agar teks terupdate
+                  editable={false}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                   <MaterialIcons 
@@ -235,42 +299,6 @@ export default function ProfileScreen() {
                   Ubah Kata Sandi
                 </ThemedText>
               </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Preferences Section */}
-          <View style={styles.sectionWrapper}>
-            <View style={styles.sectionHeader}>
-              <MaterialIcons name="settings" size={20} color="#1A365D" />
-              <ThemedText style={[manrope, { fontWeight: '600', fontSize: 20, color: '#0D1C2E', marginLeft: 8 }]}>
-                Preferensi
-              </ThemedText>
-            </View>
-            
-            <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
-              <View style={{ marginBottom: 16 }}>
-                <ThemedText style={[manrope, styles.inputLabel]}>
-                  Bahasa
-                </ThemedText>
-                <View style={styles.dropdownFake}>
-                  <ThemedText style={[manrope, { flex: 1, fontSize: 16, color: '#0D1C2E' }]}>
-                    {formData.bahasa}
-                  </ThemedText>
-                  <MaterialIcons name="expand-more" size={20} color="#43474E" />
-                </View>
-              </View>
-
-              <View>
-                <ThemedText style={[manrope, styles.inputLabel]}>
-                  Kota Operasional
-                </ThemedText>
-                <View style={styles.dropdownFake}>
-                  <ThemedText style={[manrope, { flex: 1, fontSize: 16, color: '#0D1C2E' }]}>
-                    {formData.kotaOperasional}
-                  </ThemedText>
-                  <MaterialIcons name="expand-more" size={20} color="#43474E" />
-                </View>
-              </View>
             </View>
           </View>
 

@@ -20,10 +20,15 @@ export default function LoginScreen({ onNavigateToRegister }: { onNavigateToRegi
 
   const handleLogin = async () => {
     setError('');
+    if (isLoading) return; // Prevent double-click
+    console.log('[LoginScreen] handleLogin called with:', email);
     try {
       await login(email, password);
+      console.log('[LoginScreen] Login successful');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login gagal');
+      const errorMsg = err instanceof Error ? err.message : 'Login gagal';
+      console.log('[LoginScreen] Login error:', errorMsg);
+      setError(errorMsg);
     }
   };
 
@@ -152,27 +157,24 @@ export default function LoginScreen({ onNavigateToRegister }: { onNavigateToRegi
 
         {/* Login Button */}
         <View style={{ marginTop: 20 }}>
-          {isLoading ? (
-            <View
-              style={[
-                styles.loginButton,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: 0.6,
-                },
-              ]}
-            >
+          <TouchableOpacity 
+            style={[
+              styles.loginButton, 
+              { 
+                backgroundColor: colors.primary,
+                opacity: isLoading ? 0.6 : 1,
+              }
+            ]}
+            onPress={handleLogin}
+            disabled={isLoading}
+            activeOpacity={isLoading ? 1 : 0.8}
+          >
+            {isLoading ? (
               <ActivityIndicator color="#FFFFFF" />
-            </View>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.loginButton, { backgroundColor: colors.primary }]}
-              onPress={handleLogin}
-              activeOpacity={0.8}
-            >
+            ) : (
               <ThemedText style={styles.loginButtonText}>Masuk</ThemedText>
-            </TouchableOpacity>
-          )}
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Divider */}

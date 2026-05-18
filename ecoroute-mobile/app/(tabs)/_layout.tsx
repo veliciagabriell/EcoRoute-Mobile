@@ -17,7 +17,9 @@ export default function TabLayout() {
 
   // Detect current route and update active tab
   const updateActiveTab = useCallback(() => {
-    if (pathname?.includes('explore')) {
+    if (pathname?.includes('sensors')) {
+      setActiveTab('sensors');
+    } else if (pathname?.includes('explore')) {
       setActiveTab('tps');
     } else if (pathname?.includes('ecobot')) {
       setActiveTab('ecobot');
@@ -41,6 +43,11 @@ export default function TabLayout() {
     tabs.push({ id: 'ecobot', label: 'EcoBot', icon: 'chat' });
   }
   
+  // Add sensors tab for officers (petugas)
+  if (user?.role === 'petugas') {
+    tabs.push({ id: 'sensors', label: 'Sensor', icon: 'sensors' });
+  }
+  
   tabs.push(
     { id: 'tps', label: 'TPS', icon: 'location-on' },
     { id: 'report', label: 'Report', icon: 'info' },
@@ -52,6 +59,9 @@ export default function TabLayout() {
     
     // Navigate based on tab
     switch (tabId) {
+      case 'sensors':
+        router.push('/(tabs)/sensors');
+        break;
       case 'ecobot':
         router.push('/(tabs)/ecobot');
         break;
@@ -97,6 +107,13 @@ export default function TabLayout() {
           name="explore"
           options={{
             title: 'TPS',
+          }}
+        />
+        <Tabs.Screen
+          name="sensors"
+          options={{
+            title: 'Monitor Sensor',
+            href: user?.role === 'petugas' ? '/(tabs)/sensors' : null,
           }}
         />
         <Tabs.Screen
