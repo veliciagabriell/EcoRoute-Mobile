@@ -1,11 +1,11 @@
 const db = require('../config/db');
 
 async function insert(reading) {
-  const { tps_id, device_id, ammonia_ppm, fullness_pct, is_critical, timestamp } = reading;
+  const { tps_id, device_id, ammonia_ppm, fullness_pct, is_critical, alert_level = 'normal', timestamp } = reading;
   const res = await db.query(
-    `INSERT INTO sensor_readings (tps_id,device_id,ammonia_ppm,fullness_pct,is_critical,timestamp)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [tps_id, device_id, ammonia_ppm, fullness_pct, is_critical, timestamp]
+    `INSERT INTO sensor_readings (tps_id,device_id,ammonia_ppm,fullness_pct,is_critical,alert_level,timestamp)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+    [tps_id, device_id, ammonia_ppm, fullness_pct, is_critical, alert_level, timestamp]
   );
   return res.rows[0];
 }

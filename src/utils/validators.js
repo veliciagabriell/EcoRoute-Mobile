@@ -1,5 +1,24 @@
 const Joi = require('joi');
 
+const registerSchema = Joi.object({
+  name: Joi.string().min(2).max(100).required().messages({
+    'string.empty': 'Nama tidak boleh kosong',
+    'string.min': 'Nama minimal 2 karakter',
+    'any.required': 'Nama wajib diisi',
+  }),
+  email: Joi.string().email().required().messages({
+    'string.email': 'Format email tidak valid',
+    'any.required': 'Email wajib diisi',
+  }),
+  password: Joi.string().min(8).required().messages({
+    'string.min': 'Kata sandi minimal 8 karakter',
+    'any.required': 'Kata sandi wajib diisi',
+  }),
+  role: Joi.string().valid('umum', 'petugas', 'admin').default('umum').messages({
+    'any.only': 'Role harus salah satu dari: umum, petugas, admin',
+  }),
+});
+
 const loginSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().required(),
@@ -14,4 +33,4 @@ const iotDataSchema = Joi.object({
   battery_pct: Joi.number().optional(),
 });
 
-module.exports = { loginSchema, iotDataSchema };
+module.exports = { registerSchema, loginSchema, iotDataSchema };

@@ -1,0 +1,414 @@
+openapi: 3.0.0
+info:
+  title: EcoRoute TPS API Documentation
+  description: API endpoints untuk manajemen Tempat Pembuangan Sampah (TPS)
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000/api
+    description: Development server
+
+paths:
+  /tps:
+    get:
+      tags:
+        - TPS
+      summary: Dapatkan semua lokasi TPS
+      description: Mengambil daftar semua TPS dengan informasi pembacaan sensor terbaru
+      parameters:
+        - name: area
+          in: query
+          description: Filter berdasarkan area (opsional)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Daftar TPS berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TPSWithReading'
+                  count:
+                    type: integer
+        '401':
+          description: Unauthorized
+      security:
+        - BearerAuth: []
+
+    post:
+      tags:
+        - TPS
+      summary: Buat TPS baru
+      description: Membuat lokasi TPS baru (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - latitude
+                - longitude
+                - container_height_cm
+              properties:
+                name:
+                  type: string
+                  example: "TPS Blok A - Kelurahan Jatinegara"
+                latitude:
+                  type: number
+                  format: decimal
+                  example: -6.225144
+                longitude:
+                  type: number
+                  format: decimal
+                  example: 106.862278
+                container_height_cm:
+                  type: integer
+                  example: 100
+                  description: Tinggi kontainer dalam cm
+                area:
+                  type: string
+                  example: "Jakarta Timur"
+      responses:
+        '201':
+          description: TPS berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TPS'
+        '400':
+          description: Validasi gagal
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - hanya admin
+      security:
+        - BearerAuth: []
+
+  /tps/with-readings:
+    get:
+      tags:
+        - TPS
+      summary: Dapatkan semua TPS dengan pembacaan sensor terbaru
+      description: Mengambil daftar TPS lengkap dengan data sensor pembacaan terakhir
+      responses:
+        '200':
+          description: Data berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TPSWithReadingDetailed'
+                  count:
+                    type: integer
+        '401':
+          description: Unauthorized
+      security:
+        - BearerAuth: []
+
+  /tps/{id}:
+    get:
+      tags:
+        - TPS
+      summary: Dapatkan detail TPS spesifik
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detail TPS ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tps:
+                    $ref: '#/components/schemas/TPS'
+                  latestReading:
+                    $ref: '#/components/schemas/SensorReading'
+        '404':
+          description: TPS tidak ditemukan
+        '401':
+          description: Unauthorized
+      security:
+        - BearerAuth: []
+
+    put:
+      tags:
+        - TPS
+      summary: Update TPS
+      description: Memperbarui informasi TPS (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+                container_height_cm:
+                  type: integer
+                area:
+                  type: string
+      responses:
+        '200':
+          description: TPS berhasil diupdate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TPS'
+        '404':
+          description: TPS tidak ditemukan
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+        - BearerAuth: []
+
+    delete:
+      tags:
+        - TPS
+      summary: Hapus TPS
+      description: Menghapus lokasi TPS (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: TPS berhasil dihapus
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/TPS'
+        '404':
+          description: TPS tidak ditemukan
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden
+      security:
+        - BearerAuth: []
+
+  /tps/{id}/readings:
+    get:
+      tags:
+        - TPS
+      summary: Dapatkan pembacaan sensor dalam rentang waktu
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          description: Waktu mulai (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: Waktu selesai (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Pembacaan sensor ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SensorReading'
+                  count:
+                    type: integer
+        '401':
+          description: Unauthorized
+      security:
+        - BearerAuth: []
+
+  /tps/{id}/statistics:
+    get:
+      tags:
+        - TPS
+      summary: Dapatkan statistik TPS 24 jam terakhir
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Statistik ditemukan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tps:
+                    $ref: '#/components/schemas/TPS'
+                  statistics:
+                    $ref: '#/components/schemas/Statistics'
+        '404':
+          description: TPS tidak ditemukan
+        '401':
+          description: Unauthorized
+      security:
+        - BearerAuth: []
+
+components:
+  schemas:
+    TPS:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        latitude:
+          type: number
+          format: decimal
+        longitude:
+          type: number
+          format: decimal
+        container_height_cm:
+          type: integer
+        area:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    TPSWithReading:
+      type: object
+      properties:
+        tps:
+          $ref: '#/components/schemas/TPS'
+        latestReading:
+          $ref: '#/components/schemas/SensorReading'
+
+    TPSWithReadingDetailed:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        container_height_cm:
+          type: integer
+        area:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        ammonia_ppm:
+          type: number
+          nullable: true
+        fullness_pct:
+          type: number
+          nullable: true
+        alert_level:
+          type: string
+          enum: [normal, warning, critical]
+          nullable: true
+        last_reading_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    SensorReading:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tps_id:
+          type: string
+          format: uuid
+        device_id:
+          type: string
+        ammonia_ppm:
+          type: number
+          format: decimal
+        fullness_pct:
+          type: number
+          format: decimal
+        alert_level:
+          type: string
+          enum: [normal, warning, critical]
+        timestamp:
+          type: string
+          format: date-time
+
+    Statistics:
+      type: object
+      properties:
+        total_readings:
+          type: integer
+        avg_ammonia_ppm:
+          type: number
+        max_ammonia_ppm:
+          type: number
+        avg_fullness_pct:
+          type: number
+        max_fullness_pct:
+          type: number
+        critical_count:
+          type: integer
+        warning_count:
+          type: integer
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
