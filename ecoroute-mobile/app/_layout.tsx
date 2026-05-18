@@ -55,10 +55,13 @@ function RootLayoutContent() {
     }
 
     const inAuthGroup = segments?.[0] === 'login' || segments?.[0] === 'register';
-    console.log('[Navigation] Check:', { isSignedIn, inAuthGroup, segments: segments?.[0], isLoading });
+    const inTabsGroup = segments?.[0] === '(tabs)';
+    console.log('[Navigation] Check:', { isSignedIn, inAuthGroup, inTabsGroup, segments: segments?.[0], isLoading });
 
-    // Jika sudah login, redirect ke dashboard
-    if (isSignedIn && inAuthGroup) {
+    if (isLoading) return;
+
+    // Jika sudah login dan belum di tab utama, redirect ke dashboard
+    if (isSignedIn && !inTabsGroup) {
       const target = user?.role === 'admin' ? '/(tabs)' : '/(tabs)/profile';
       console.log('[Navigation] Redirecting to:', target);
       router.replace(target);
@@ -68,7 +71,7 @@ function RootLayoutContent() {
       console.log('[Navigation] Redirecting to login');
       router.replace('/login');
     }
-  }, [fontsLoaded, isSignedIn, user?.role, segments, router]);
+  }, [fontsLoaded, isSignedIn, user?.role, segments, router, isLoading]);
 
   // Show minimal UI while fonts load
   if (!fontsLoaded) {

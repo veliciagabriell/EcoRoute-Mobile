@@ -68,7 +68,6 @@ mqttClient.on('message', async (topic, message) => {
       await redis.setex(`latest_reading:${reading.tps_id}`, 600, JSON.stringify(saved));
       
       // Check if alert level changed for this TPS
-      const cacheKey = `alert_level:${reading.tps_id}`;
       const lastLevel = lastAlertLevelCache.get(reading.tps_id) || 'normal';
       
       // Send notification only if level changed or escalated

@@ -174,7 +174,7 @@ export default function HelpScreen() {
               <View style={styles.emptyState}>
                 <MaterialIcons name="search-off" size={48} color="#C4C6CF" />
                 <ThemedText style={styles.emptyText}>
-                  Tidak ada topik yang cocok dengan "{searchQuery}"
+                  Tidak ada topik yang cocok dengan &quot;{searchQuery}&quot;
                 </ThemedText>
               </View>
             )}

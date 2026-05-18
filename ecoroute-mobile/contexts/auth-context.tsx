@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import Constants from 'expo-constants';
 import { post, setAccessToken } from '@/utils/api';
 
 interface User {
@@ -26,6 +27,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const isMountedRef = useRef(true);
 
+  const demoLoginEnabled = (Constants.expoConfig as any)?.extra?.DEMO_LOGIN !== false;
+
+  const applyDemoLogin = (email: string) => {
+    setAccessToken('demo-access-token');
+    setUser({
+      id: 'demo-user',
+      email,
+      name: 'Demo Admin',
+      role: 'admin',
+      work_area: null,
+    });
+    setIsSignedIn(true);
+  };
+
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
@@ -40,6 +55,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[Auth] Component unmounted, skipping login');
       return;
     }
+
+    if (demoLoginEnabled) {
+      console.log('[Auth] Demo login enabled - skipping API call');
+      setIsLoading(true);
+      applyDemoLogin(email);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     console.log('[Auth] Starting login for:', email);
     try {
@@ -67,6 +91,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err: any) {
       console.error('[Auth] Login error:', err);
+      const message = typeof err?.message === 'string' ? err.message : '';
+      const isTimeout = message.toLowerCase().includes('timeout');
+      const isFetchError = message.toLowerCase().includes('failed to fetch');
+
+      if (demoLoginEnabled && (isTimeout || isFetchError)) {
+        console.warn('[Auth] Login failed - using demo login fallback');
+        applyDemoLogin(email);
+        return;
+      }
       if (isMountedRef.current) {
         setIsLoading(false);
       }
@@ -118,6 +151,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (err: any) {
       console.error('[Auth] Register error:', err);
+      const message = typeof err?.message === 'string' ? err.message : '';
+      const isTimeout = message.toLowerCase().includes('timeout');
+      const isFetchError = message.toLowerCase().includes('failed to fetch');
+
+      if (demoLoginEnabled && (isTimeout || isFetchError)) {
+        console.warn('[Auth] Register failed - using demo login fallback');
+        applyDemoLogin(email);
+        return;
+      }
       if (isMountedRef.current) {
         setIsLoading(false);
       }

@@ -86,10 +86,10 @@ export default function HomeScreen() {
         {/* Welcome Section */}
         <View style={styles.welcomeSection}>
           <ThemedText style={[styles.greeting, { fontFamily: 'Manrope-Bold' }]}>
-            Halo, {user?.namaLengkap || 'Admin'}
+            Halo, {user?.name || 'Admin'}
           </ThemedText>
           <ThemedText style={[styles.subtitle, { color: colors.textSecondary, fontFamily: 'Manrope' }]}>
-            Here's the current overview of your fleet and collection points.
+            Here&apos;s the current overview of your fleet and collection points.
           </ThemedText>
         </View>
 

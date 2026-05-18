@@ -61,6 +61,7 @@ app.get('/api/test', (req, res) => {
 
 // ── Generic Error Handler ────────────────────────────────────
 app.use((err, req, res, next) => {
+  void next;
   console.error('[Error]', {
     message: err.message,
     code: err.code,

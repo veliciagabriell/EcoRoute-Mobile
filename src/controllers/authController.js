@@ -37,7 +37,8 @@ async function register(req, res, next) {
     });
 
     // Hilangkan password_hash sebelum dikirim
-    const { password_hash: _, ...userProfile } = newUser;
+  const { password_hash: passwordHash, ...userProfile } = newUser;
+  void passwordHash;
     console.log('[Auth] Register success:', { id: userProfile.id, email: userProfile.email });
 
     return res.status(201).json({
@@ -83,7 +84,8 @@ async function login(req, res, next) {
     );
 
     // Hilangkan password_hash sebelum dikirim
-    const { password_hash: _, ...userProfile } = user;
+  const { password_hash: passwordHash, ...userProfile } = user;
+  void passwordHash;
     console.log('[Auth] Login success:', { id: userProfile.id, email: userProfile.email, role: userProfile.role });
 
     return res.json({
@@ -122,7 +124,8 @@ function refresh(req, res) {
  */
 async function me(req, res, next) {
   try {
-    const { password_hash: _, ...userProfile } = req.user;
+  const { password_hash: passwordHash, ...userProfile } = req.user;
+  void passwordHash;
     return res.json(userProfile);
   } catch (err) {
     next(err);

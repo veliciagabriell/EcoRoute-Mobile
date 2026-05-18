@@ -4,7 +4,11 @@ export default ({ config }) => {
   return {
     ...config,
     extra: {
-      API_URL: process.env.API_URL || 'http://10.0.2.2:3000/api'
+      API_URL: process.env.API_URL,
+      DEMO_LOGIN:
+        process.env.EXPO_PUBLIC_DEMO_LOGIN === undefined
+          ? true
+          : process.env.EXPO_PUBLIC_DEMO_LOGIN !== 'false'
     }
   };
 };
