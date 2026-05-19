@@ -55,6 +55,12 @@ CREATE TABLE IF NOT EXISTS user_reports (
   tps_id UUID REFERENCES tps_locations(id),
   reporter_id UUID REFERENCES users(id),
   description TEXT NOT NULL,
+  indicators JSONB,
+  severity VARCHAR(20),
+  photo_base64 TEXT,
+  photo_mime VARCHAR(50),
+  location_lat DECIMAL(10,7),
+  location_lng DECIMAL(10,7),
   reported_at TIMESTAMP DEFAULT NOW(),
   status report_status DEFAULT 'pending'
 );

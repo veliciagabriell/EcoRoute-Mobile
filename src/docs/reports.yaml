@@ -5,6 +5,37 @@ paths:
       tags:
         - Reports
       summary: Buat laporan warga
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - description
+              properties:
+                tps_id:
+                  type: string
+                  format: uuid
+                description:
+                  type: string
+                indicators:
+                  type: array
+                  items:
+                    type: string
+                severity:
+                  type: string
+                  enum: [rendah, sedang, tinggi]
+                photo_base64:
+                  type: string
+                  description: Base64 image string
+                photo_mime:
+                  type: string
+                  example: image/jpeg
+                location_lat:
+                  type: number
+                location_lng:
+                  type: number
       security:
         - BearerAuth: []
       responses:

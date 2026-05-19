@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator } from 'react-native';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors } from '@/constants/theme';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, Pressable, Alert } from 'react-native';
 import { Header } from '@/components/header';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { get, post } from '@/utils/api';
 import { 
   useFonts, 
   Manrope_400Regular, 
@@ -13,10 +13,18 @@ import {
   Manrope_700Bold 
 } from '@expo-google-fonts/manrope';
 
+const INDICATORS = ['Menumpuk', 'Bau Tidak Sedap', 'Banyak Lalat', 'Meluap ke Jalan'];
+
 export default function ReportScreen() {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
   const [severity, setSeverity] = useState('Sedang');
+  const [tpsList, setTpsList] = useState<any[]>([]);
+  const [selectedTps, setSelectedTps] = useState<any>(null);
+  const [showTpsPicker, setShowTpsPicker] = useState(false);
+  const [indicators, setIndicators] = useState<string[]>(['Menumpuk']);
+  const [description, setDescription] = useState('');
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [photoMime, setPhotoMime] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 1. Load Manrope Fonts
   const [fontsLoaded] = useFonts({
@@ -27,6 +35,75 @@ export default function ReportScreen() {
   });
 
   const manrope = { fontFamily: 'Manrope' };
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const data = await get('/tps');
+        const list = data?.data || data || [];
+        if (active) {
+          setTpsList(list);
+          setSelectedTps(list?.[0]?.tps || list?.[0] || null);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch TPS list', err);
+      }
+    };
+    load();
+    return () => { active = false; };
+  }, []);
+
+  const toggleIndicator = (label: string) => {
+    setIndicators((prev) =>
+      prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label]
+    );
+  };
+
+  const pickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Izin diperlukan', 'Aktifkan izin galeri agar bisa memilih foto.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      base64: true,
+      quality: 0.7,
+      allowsEditing: false,
+      selectionLimit: 1,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      setPhotoBase64(result.assets[0].base64 || null);
+      setPhotoMime(result.assets[0].mimeType || 'image/jpeg');
+    }
+  };
+
+  const submitReport = async () => {
+    if (!description.trim()) return;
+    setIsSubmitting(true);
+    try {
+      await post('/reports', {
+        tps_id: selectedTps?.id,
+        description,
+        indicators,
+        severity: severity.toLowerCase(),
+        photo_base64: photoBase64,
+        photo_mime: photoMime,
+      });
+      setDescription('');
+      setPhotoBase64(null);
+      setPhotoMime(null);
+      setIndicators([]);
+      setSeverity('Sedang');
+    } catch (err) {
+      console.warn('Submit report error', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (!fontsLoaded) {
     return (
@@ -45,6 +122,8 @@ export default function ReportScreen() {
       <ScrollView 
         style={styles.scrollView} 
         contentContainerStyle={{ paddingBottom: 40 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
         {/* Progress Stepper Section */}
@@ -82,8 +161,8 @@ export default function ReportScreen() {
 
           <View style={styles.inputGroup}>
             <ThemedText style={[manrope, styles.inputLabel]}>Pilih TPS</ThemedText>
-            <TouchableOpacity style={styles.dropdownInput}>
-              <ThemedText style={[manrope, styles.inputText]}>TPS Kebon Jeruk - KJ01</ThemedText>
+            <TouchableOpacity style={styles.dropdownInput} onPress={() => setShowTpsPicker(true)}>
+              <ThemedText style={[manrope, styles.inputText]}>{selectedTps?.name || 'Pilih TPS'}</ThemedText>
               <MaterialIcons name="expand-more" size={24} color="#43474E" />
             </TouchableOpacity>
           </View>
@@ -114,10 +193,9 @@ export default function ReportScreen() {
           <View style={styles.inputGroup}>
             <ThemedText style={[manrope, styles.inputLabel]}>Indikator Kondisi (Pilih semua yang sesuai)</ThemedText>
             <View style={styles.checkboxGrid}>
-              <CheckboxLabel label="Menumpuk" checked={true} />
-              <CheckboxLabel label="Bau Tidak Sedap" checked={false} />
-              <CheckboxLabel label="Banyak Lalat" checked={false} />
-              <CheckboxLabel label="Meluap ke Jalan" checked={false} />
+              {INDICATORS.map((label) => (
+                <CheckboxLabel key={label} label={label} checked={indicators.includes(label)} onPress={() => toggleIndicator(label)} />
+              ))}
             </View>
           </View>
 
@@ -132,11 +210,11 @@ export default function ReportScreen() {
 
           <View style={styles.inputGroup}>
             <ThemedText style={[manrope, styles.inputLabel]}>Foto Kondisi</ThemedText>
-            <TouchableOpacity style={styles.uploadArea}>
+            <TouchableOpacity style={styles.uploadArea} onPress={pickImage}>
               <View style={styles.uploadIconCircle}>
                 <MaterialIcons name="camera-alt" size={24} color="#1A365D" />
               </View>
-              <ThemedText style={[manrope, styles.uploadText]}>Unggah Foto</ThemedText>
+              <ThemedText style={[manrope, styles.uploadText]}>{photoBase64 ? 'Foto dipilih' : 'Unggah Foto'}</ThemedText>
               <ThemedText style={[manrope, styles.uploadSubtext]}>JPG, PNG maksimal 5MB</ThemedText>
             </TouchableOpacity>
           </View>
@@ -149,43 +227,96 @@ export default function ReportScreen() {
               placeholderTextColor="#6B7280"
               multiline={true}
               numberOfLines={4}
+              value={description}
+              onChangeText={setDescription}
             />
           </View>
         </View>
 
         {/* Submit Button */}
-        <TouchableOpacity style={styles.submitButton}>
-          <MaterialIcons name="send" size={20} color="#FFFFFF" />
-          <ThemedText style={[manrope, styles.submitButtonText]}>Kirim Laporan</ThemedText>
+        <TouchableOpacity style={styles.submitButton} onPress={submitReport} disabled={isSubmitting}>
+          {isSubmitting ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <MaterialIcons name="send" size={20} color="#FFFFFF" />
+              <ThemedText style={[manrope, styles.submitButtonText]}>Kirim Laporan</ThemedText>
+            </>
+          )}
         </TouchableOpacity>
 
       </ScrollView>
+
+      <Modal visible={showTpsPicker} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <ThemedText style={styles.modalTitle}>Pilih TPS</ThemedText>
+            <ScrollView style={{ maxHeight: 280 }}>
+              {tpsList.map((item: any, index: number) => {
+                const tps = item.tps || item;
+                return (
+                  <TouchableOpacity
+                    key={tps.id || index}
+                    style={styles.modalItem}
+                    onPress={() => {
+                      setSelectedTps(tps);
+                      setShowTpsPicker(false);
+                    }}
+                  >
+                    <ThemedText>{tps.name}</ThemedText>
+                    <ThemedText style={{ color: '#6B7280', fontSize: 12 }}>{tps.area}</ThemedText>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={styles.modalClose} onPress={() => setShowTpsPicker(false)}>
+              <ThemedText style={{ color: '#0061A5', fontWeight: '600' }}>Tutup</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 // Helper Components
-function CheckboxLabel({ label, checked }: any) {
+function CheckboxLabel({ label, checked, onPress }: any) {
   const manrope = { fontFamily: 'Manrope' };
   return (
-    <TouchableOpacity style={[styles.checkboxItem, checked && styles.checkboxItemChecked]}>
+    <Pressable
+      style={({ pressed }) => [
+        styles.checkboxItem,
+        checked && styles.checkboxItemChecked,
+        pressed && { opacity: 0.85 },
+      ]}
+      onPress={onPress}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      hitSlop={8}
+    >
       <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
         {checked && <MaterialIcons name="check" size={14} color="#FFFFFF" />}
       </View>
       <ThemedText style={[manrope, styles.checkboxText]}>{label}</ThemedText>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 function RadioButton({ label, selected, onPress, isWarning }: any) {
   const manrope = { fontFamily: 'Manrope' };
   return (
-    <TouchableOpacity style={styles.radioItem} onPress={onPress}>
+    <Pressable
+      style={({ pressed }) => [styles.radioItem, pressed && { opacity: 0.85 }]}
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      hitSlop={8}
+    >
       <View style={[styles.radioOuter, selected && { borderColor: isWarning ? '#F59E0B' : '#0061A5' }]}>
         {selected && <View style={[styles.radioInner, { backgroundColor: isWarning ? '#F59E0B' : '#0061A5' }]} />}
       </View>
       <ThemedText style={[manrope, styles.radioText]}>{label}</ThemedText>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
@@ -249,4 +380,10 @@ const styles = StyleSheet.create({
 
   submitButton: { backgroundColor: '#1A365D', height: 52, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, elevation: 4 },
   submitButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 16, width: '100%' },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: '#0D1C2E', marginBottom: 12 },
+  modalItem: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E5EEFF' },
+  modalClose: { marginTop: 12, alignItems: 'center' },
 });
