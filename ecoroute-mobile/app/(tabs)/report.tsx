@@ -82,7 +82,15 @@ export default function ReportScreen() {
   };
 
   const submitReport = async () => {
-    if (!description.trim()) return;
+    if (!description.trim()) {
+      Alert.alert('Deskripsi wajib', 'Mohon isi deskripsi singkat kondisi TPS.');
+      return;
+    }
+    if (!selectedTps?.id) {
+      Alert.alert('TPS belum dipilih', 'Pilih TPS terlebih dahulu sebelum mengirim laporan.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await post('/reports', {
@@ -98,8 +106,11 @@ export default function ReportScreen() {
       setPhotoMime(null);
       setIndicators([]);
       setSeverity('Sedang');
-    } catch (err) {
+      Alert.alert('Laporan terkirim', 'Terima kasih, laporan berhasil dikirim.');
+    } catch (err: any) {
+      const message = typeof err?.message === 'string' ? err.message : 'Gagal mengirim laporan.';
       console.warn('Submit report error', err);
+      Alert.alert('Gagal mengirim', message);
     } finally {
       setIsSubmitting(false);
     }
