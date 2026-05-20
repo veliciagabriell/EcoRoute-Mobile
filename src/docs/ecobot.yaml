@@ -1,0 +1,121 @@
+components:
+  schemas:
+    ChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+          example: user
+        content:
+          type: string
+          minLength: 1
+          example: Apa itu EcoRoute?
+
+    ChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatMessage'
+          example:
+            - role: user
+              content: Apa itu EcoRoute?
+
+    ChatResponse:
+      type: object
+      properties:
+        reply:
+          type: string
+          example: EcoRoute adalah sistem manajemen sampah berbasis IoT yang membantu pengelolaan TPS secara cerdas.
+        mode:
+          type: string
+          enum: [llm, mock]
+          example: llm
+
+    EcoBotHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        use_mock:
+          type: string
+          example: 'false'
+        model_path:
+          type: string
+          example: C:\Users\aqmar\tinyllama-1.1b-instruct.Q4_K_M.gguf
+
+paths:
+  /ecobot/chat:
+    post:
+      tags: [EcoBot]
+      summary: Chat dengan EcoBot
+      description: >
+        Kirim pesan ke EcoBot dan terima balasan. EcoBot menjawab pertanyaan seputar
+        EcoRoute, pengelolaan sampah, daur ulang, IoT TPS, dan edukasi lingkungan.
+        Semua jawaban dalam Bahasa Indonesia.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Balasan EcoBot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '503':
+          description: EcoBot service tidak tersedia
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ecobot/chat/stream:
+    post:
+      tags: [EcoBot]
+      summary: Chat dengan EcoBot (streaming SSE)
+      description: >
+        Sama seperti /ecobot/chat namun menggunakan Server-Sent Events (SSE)
+        sehingga token dikirim secara real-time. Response berformat text/event-stream.
+        Setiap event berisi `data: {"token": "..."}` dan diakhiri dengan `event: done`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: SSE stream token EcoBot
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: "data: {\"token\": \"EcoRoute\"}\n\nevent: done\ndata: {}\n\n"
+
+  /ecobot/health:
+    get:
+      tags: [EcoBot]
+      summary: Status EcoBot service
+      description: Cek apakah Python EcoBot service berjalan dan mode apa yang aktif (llm/mock).
+      responses:
+        '200':
+          description: EcoBot service aktif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EcoBotHealthResponse'
+        '503':
+          description: EcoBot service tidak tersedia
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'

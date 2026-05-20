@@ -244,6 +244,7 @@ const options = {
       { name: 'Reports', description: 'Laporan dari warga' },
       { name: 'Analytics', description: 'Data tren dan analitik' },
       { name: 'IoT', description: 'Endpoint HTTP fallback untuk perangkat IoT' },
+      { name: 'EcoBot', description: 'Chatbot AI EcoRoute — tanya seputar sampah, TPS, IoT, dan lingkungan. Dijawab dalam Bahasa Indonesia.' },
       { name: 'System', description: 'Health check dan status sistem' },
     ],
   },

@@ -4,7 +4,7 @@ export default ({ config }) => {
   return {
     ...config,
     extra: {
-      API_URL: process.env.API_URL,
+      API_URL: process.env.EXPO_PUBLIC_API_URL,
       MQTT_URL: process.env.EXPO_PUBLIC_MQTT_URL,
       ECOBOT_URL: process.env.EXPO_PUBLIC_ECOBOT_URL,
       DEMO_LOGIN:

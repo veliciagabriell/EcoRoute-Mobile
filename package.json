@@ -4,10 +4,10 @@
   "description": "Backend API for EcoRoute - IoT smart waste management",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "set NODE_OPTIONS=--dns-result-order=ipv4first && node src/server.js",
+    "dev": "set NODE_OPTIONS=--dns-result-order=ipv4first && nodemon src/server.js",
     "seed-db": "node scripts/seed-db.js",
-  "lint": "eslint src scripts"
+    "lint": "eslint src scripts"
   },
   "engines": {
     "node": ">=16"

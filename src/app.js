@@ -71,8 +71,13 @@ app.use((err, req, res, next) => {
   });
   
   // Send appropriate status code
-  const statusCode = err.status || err.statusCode || 500;
-  const errorMessage = err.message || 'Internal Server Error';
+  const isDbTimeout =
+    typeof err?.message === 'string' &&
+    err.message.toLowerCase().includes('connection timeout');
+  const statusCode = err.status || err.statusCode || (isDbTimeout ? 503 : 500);
+  const errorMessage = isDbTimeout
+    ? 'Database Supabase tidak terjangkau dari backend saat ini. Gunakan Supabase pooler URL atau perbaiki koneksi jaringan ke host Postgres.'
+    : err.message || 'Internal Server Error';
   
   res.status(statusCode).json({ 
     error: errorMessage,

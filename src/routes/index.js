@@ -7,6 +7,7 @@ const analyticsController = require('../controllers/analyticsController');
 const iotController = require('../controllers/iotController');
 const sensorController = require('../controllers/sensorController');
 const healthController = require('../controllers/healthController');
+const ecobotController = require('../controllers/ecobotController');
 
 const { authRequired } = require('../middleware/auth');
 const { requireApiKey } = require('../middleware/apiKey');
@@ -50,6 +51,11 @@ router.get('/analytics/trends', authRequired, permit('admin'), analyticsControll
 
 // IoT HTTP fallback
 router.post('/iot/data', requireApiKey, validateBody(iotDataSchema), iotController.postData);
+
+// EcoBot
+router.post('/ecobot/chat', ecobotController.chat);
+router.post('/ecobot/chat/stream', ecobotController.chatStream);
+router.get('/ecobot/health', ecobotController.ecobotHealth);
 
 // System
 router.get('/health', healthController.health);

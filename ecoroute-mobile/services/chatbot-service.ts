@@ -12,15 +12,14 @@ type StreamCallbacks = {
   onError: (message: string) => void;
 };
 
-const getChatbotBaseUrl = (): string => {
+const getApiBaseUrl = (): string => {
   const extra = (Constants.expoConfig as { extra?: Record<string, unknown> })?.extra;
-  const url = typeof extra?.ECOBOT_URL === 'string' ? extra.ECOBOT_URL : '';
-  const trimmed = url?.trim();
+  const url = typeof extra?.API_URL === 'string' ? extra.API_URL : '';
+  const trimmed = url?.trim().replace(/\/$/, '');
 
   if (!trimmed) {
-    console.warn('[EcoBot] ⚠️ ECOBOT_URL tidak ditemukan di Constants.expoConfig.extra');
-    console.warn('[EcoBot] Pastikan ecoroute-mobile/.env berisi: EXPO_PUBLIC_ECOBOT_URL=http://<IP_KAMU>:8001');
-    console.warn('[EcoBot] Lalu restart Expo dengan: npx expo start --clear');
+    console.warn('[EcoBot] ⚠️ API_URL tidak ditemukan di Constants.expoConfig.extra');
+    console.warn('[EcoBot] Pastikan ecoroute-mobile/.env berisi: EXPO_PUBLIC_API_URL=http://<IP_KAMU>:3000/api');
   } else {
     console.log('[EcoBot] ✅ Base URL:', trimmed);
   }
@@ -29,16 +28,15 @@ const getChatbotBaseUrl = (): string => {
 };
 
 export function streamChat(messages: ChatMessage[], callbacks: StreamCallbacks): () => void {
-  const baseUrl = getChatbotBaseUrl();
+  const baseUrl = getApiBaseUrl();
   if (!baseUrl) {
-    console.error('[EcoBot] ❌ ECOBOT_URL kosong — tidak bisa terhubung ke backend');
     callbacks.onError(
-      'EcoBot belum terkonfigurasi.\n\nCara memperbaiki:\n1. Buka file ecoroute-mobile/.env\n2. Isi EXPO_PUBLIC_ECOBOT_URL=http://<IP_PC_KAMU>:8001\n3. Restart Expo: npx expo start --clear'
+      'EcoBot belum terkonfigurasi.\n\nCara memperbaiki:\n1. Buka file ecoroute-mobile/.env\n2. Isi EXPO_PUBLIC_API_URL=http://<IP_PC_KAMU>:3000/api\n3. Restart Expo: npx expo start --clear'
     );
     return () => {};
   }
 
-  const url = `${baseUrl}/api/chat/stream`;
+  const url = `${baseUrl}/ecobot/chat/stream`;
   console.log('[EcoBot] 🔗 Menghubungi:', url);
 
   let source: EventSource | null = new EventSource(url, {
@@ -79,9 +77,11 @@ export function streamChat(messages: ChatMessage[], callbacks: StreamCallbacks):
     const statusCode = event?.status ?? 'unknown';
     console.error('[EcoBot] ❌ SSE error — status:', statusCode);
     if (statusCode === 404) {
-      callbacks.onError('Endpoint /api/chat/stream tidak ditemukan. Pastikan backend berjalan dengan benar.');
+      callbacks.onError('Endpoint EcoBot tidak ditemukan. Pastikan backend Node.js berjalan dengan benar.');
+    } else if (statusCode === 503) {
+      callbacks.onError('EcoBot AI belum aktif. Jalankan server Python:\n\ncd src && uvicorn ecobot_app:app --port 8001');
     } else if (statusCode === 0 || statusCode === undefined) {
-      callbacks.onError('Tidak bisa terhubung ke EcoBot. Pastikan backend Python sudah dijalankan.');
+      callbacks.onError('Tidak bisa terhubung ke backend. Pastikan Node.js server sudah dijalankan di port 3000.');
     } else {
       callbacks.onError(`Gagal terhubung ke EcoBot (status ${statusCode}).`);
     }
@@ -92,15 +92,14 @@ export function streamChat(messages: ChatMessage[], callbacks: StreamCallbacks):
 }
 
 export async function sendChat(messages: ChatMessage[]): Promise<string> {
-  const baseUrl = getChatbotBaseUrl();
+  const baseUrl = getApiBaseUrl();
   if (!baseUrl) {
-    console.error('[EcoBot] ❌ sendChat dipanggil tapi ECOBOT_URL kosong');
     throw new Error(
-      'EcoBot belum terkonfigurasi. Isi EXPO_PUBLIC_ECOBOT_URL di ecoroute-mobile/.env lalu restart Expo.'
+      'EcoBot belum terkonfigurasi. Isi EXPO_PUBLIC_API_URL di ecoroute-mobile/.env lalu restart Expo.'
     );
   }
 
-  const url = `${baseUrl}/api/chat`;
+  const url = `${baseUrl}/ecobot/chat`;
   console.log('[EcoBot] 📤 sendChat ke:', url);
 
   try {
@@ -111,6 +110,10 @@ export async function sendChat(messages: ChatMessage[]): Promise<string> {
     });
 
     console.log('[EcoBot] 📥 sendChat response status:', res.status);
+
+    if (res.status === 503) {
+      throw new Error('EcoBot AI belum aktif. Jalankan server Python:\n\ncd src && uvicorn ecobot_app:app --port 8001');
+    }
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
@@ -129,7 +132,7 @@ export async function sendChat(messages: ChatMessage[]): Promise<string> {
   } catch (err) {
     if (err instanceof TypeError && err.message.includes('Network request failed')) {
       throw new Error(
-        'Tidak bisa terhubung ke EcoBot. Pastikan:\n1. Backend Python sudah dijalankan\n2. IP di .env sudah benar\n3. HP/emulator & PC berada di jaringan Wi-Fi yang sama'
+        'Tidak bisa terhubung ke backend. Pastikan:\n1. Node.js server sudah dijalankan di port 3000\n2. IP di .env sudah benar\n3. HP/emulator & PC berada di jaringan Wi-Fi yang sama'
       );
     }
     throw err;

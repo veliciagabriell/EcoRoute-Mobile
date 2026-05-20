@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import urllib.request
+import urllib.error
 from typing import Iterable, List
 
 from fastapi.responses import JSONResponse
@@ -9,124 +11,75 @@ from services.ecobot_prompt import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
-try:
-    from llama_cpp import Llama
-    logger.info("[EcoBot] llama-cpp-python berhasil diimport")
-except Exception as e:
-    Llama = None
-    logger.warning(f"[EcoBot] llama-cpp-python tidak tersedia: {e}")
-
 
 class LlmService:
     def __init__(self) -> None:
-        self.model_path = os.getenv("ECOBOT_MODEL_PATH", "")
-        self.use_mock = os.getenv("ECOBOT_USE_MOCK", "true").lower() == "true"
-        self.max_tokens = int(os.getenv("ECOBOT_MAX_TOKENS", "512"))
+        self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        self.model = os.getenv("OLLAMA_MODEL", "tinyllama")
+        self.max_tokens = int(os.getenv("ECOBOT_MAX_TOKENS", "256"))
         self.temperature = float(os.getenv("ECOBOT_TEMPERATURE", "0.2"))
-        self._model = None
 
-        logger.info(f"[EcoBot] Inisialisasi LlmService:")
-        logger.info(f"  use_mock     = {self.use_mock}")
-        logger.info(f"  model_path   = '{self.model_path}'")
-        logger.info(f"  max_tokens   = {self.max_tokens}")
-        logger.info(f"  temperature  = {self.temperature}")
+        logger.info("[EcoBot] Inisialisasi LlmService (Ollama)")
+        logger.info(f"  ollama_url  = {self.ollama_url}")
+        logger.info(f"  model       = {self.model}")
+        logger.info(f"  max_tokens  = {self.max_tokens}")
+        logger.info(f"  temperature = {self.temperature}")
 
-        if not self.use_mock:
-            if not self.model_path:
-                logger.error("[EcoBot] ECOBOT_MODEL_PATH tidak di-set! Set ECOBOT_USE_MOCK=true untuk mode tanpa model.")
-            elif not os.path.isfile(self.model_path):
-                logger.error(f"[EcoBot] File model tidak ditemukan: {self.model_path}")
-            else:
-                logger.info(f"[EcoBot] File model ditemukan, akan di-load saat request pertama.")
+    def _build_messages(self, messages: List[dict], system_prompt: str) -> List[dict]:
+        return [{"role": "system", "content": system_prompt}, *[{"role": m.role, "content": m.content} for m in messages]]
 
-    def _load_model(self) -> None:
-        if self._model is not None:
-            return
-        if self.use_mock:
-            return
-        if not self.model_path:
-            raise RuntimeError(
-                "ECOBOT_MODEL_PATH tidak di-set. "
-                "Set ECOBOT_USE_MOCK=true untuk mode tanpa model, "
-                "atau isi ECOBOT_MODEL_PATH dengan path file .gguf yang benar."
-            )
-        if not os.path.isfile(self.model_path):
-            raise RuntimeError(
-                f"File model tidak ditemukan: {self.model_path}. "
-                "Pastikan file .gguf sudah didownload dan path-nya benar."
-            )
-        if Llama is None:
-            raise RuntimeError(
-                "llama-cpp-python belum terinstall. "
-                "Jalankan: pip install llama-cpp-python"
-            )
-
-        logger.info(f"[EcoBot] Memuat model dari: {self.model_path}")
-        self._model = Llama(
-            model_path=self.model_path,
-            n_ctx=2048,
-            n_threads=int(os.getenv("ECOBOT_THREADS", "4")),
-            n_batch=int(os.getenv("ECOBOT_BATCH", "256")),
-            verbose=False,
+    def _post(self, payload: dict, stream: bool):
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.ollama_url}/api/chat",
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
         )
-        logger.info("[EcoBot] Model berhasil dimuat!")
+        return urllib.request.urlopen(req, timeout=300)
 
     def generate(self, messages: List[dict], system_prompt: str = SYSTEM_PROMPT):
-        if self.use_mock:
-            logger.info("[EcoBot] generate() mode mock")
-            return JSONResponse(
-                {
-                    "reply": (
-                        "Halo! Aku EcoBot 🌿 Saat ini aku berjalan dalam mode ringan. "
-                        "Untuk mengaktifkan AI penuh, hubungkan model LLM di backend."
-                    ),
-                    "mode": "mock",
-                }
-            )
-
         try:
-            self._load_model()
-            logger.info(f"[EcoBot] generate() dengan {len(messages)} pesan")
-            output = self._model.create_chat_completion(
-                messages=[{"role": "system", "content": system_prompt}, *messages],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
-            reply = output["choices"][0]["message"]["content"]
-            logger.info(f"[EcoBot] Respons dihasilkan ({len(reply)} karakter)")
-            return {"reply": reply, "mode": "llm"}
+            payload = {
+                "model": self.model,
+                "messages": self._build_messages(messages, system_prompt),
+                "stream": False,
+                "options": {"temperature": self.temperature, "num_predict": self.max_tokens},
+            }
+            with self._post(payload, stream=False) as resp:
+                result = json.loads(resp.read())
+                reply = result["message"]["content"]
+                logger.info(f"[EcoBot] Respons dihasilkan ({len(reply)} karakter)")
+                return {"reply": reply, "mode": "llm"}
+        except urllib.error.URLError as e:
+            logger.error(f"[EcoBot] Ollama tidak tersedia: {e}")
+            return JSONResponse(status_code=503, content={"error": "Ollama tidak tersedia. Jalankan Ollama terlebih dahulu.", "mode": "error"})
         except Exception as e:
             logger.error(f"[EcoBot] Error saat generate: {e}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": str(e), "mode": "error"},
-            )
+            return JSONResponse(status_code=500, content={"error": str(e), "mode": "error"})
 
     def generate_stream(self, messages: List[dict], system_prompt: str = SYSTEM_PROMPT) -> Iterable[str]:
-        if self.use_mock:
-            logger.info("[EcoBot] generate_stream() mode mock")
-            mock_reply = (
-                "Halo! Aku EcoBot 🌿 Saat ini aku berjalan dalam mode ringan. "
-                "Untuk mengaktifkan AI penuh, hubungkan model LLM di backend."
-            )
-            yield self._sse(mock_reply)
-            yield self._sse_done()
-            return
-
         try:
-            self._load_model()
-            logger.info(f"[EcoBot] generate_stream() dengan {len(messages)} pesan")
-            stream = self._model.create_chat_completion(
-                messages=[{"role": "system", "content": system_prompt}, *messages],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                stream=True,
-            )
-            for chunk in stream:
-                delta = chunk["choices"][0].get("delta", {})
-                token = delta.get("content")
-                if token:
-                    yield self._sse(token)
+            payload = {
+                "model": self.model,
+                "messages": self._build_messages(messages, system_prompt),
+                "stream": True,
+                "options": {"temperature": self.temperature, "num_predict": self.max_tokens},
+            }
+            with self._post(payload, stream=True) as resp:
+                for line in resp:
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line)
+                    token = chunk.get("message", {}).get("content", "")
+                    if token:
+                        yield self._sse(token)
+                    if chunk.get("done"):
+                        break
+            yield self._sse_done()
+        except urllib.error.URLError as e:
+            logger.error(f"[EcoBot] Ollama tidak tersedia: {e}")
+            yield self._sse("Maaf, Ollama service tidak tersedia. Pastikan Ollama sudah berjalan.")
             yield self._sse_done()
         except Exception as e:
             logger.error(f"[EcoBot] Error saat generate_stream: {e}")
@@ -134,8 +87,7 @@ class LlmService:
             yield self._sse_done()
 
     def _sse(self, text: str) -> str:
-        payload = json.dumps({"token": text}, ensure_ascii=False)
-        return f"data: {payload}\n\n"
+        return f"data: {json.dumps({'token': text}, ensure_ascii=False)}\n\n"
 
     def _sse_done(self) -> str:
         return "event: done\ndata: {}\n\n"

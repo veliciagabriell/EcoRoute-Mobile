@@ -39,6 +39,7 @@ logger.info("=" * 50)
 async def health():
     return {
         "status": "ok",
-        "use_mock": os.getenv("ECOBOT_USE_MOCK", "true"),
-        "model_path": os.getenv("ECOBOT_MODEL_PATH", ""),
+        "engine": "ollama",
+        "ollama_url": os.getenv("OLLAMA_URL", "http://localhost:11434"),
+        "model": os.getenv("OLLAMA_MODEL", "tinyllama"),
     }
