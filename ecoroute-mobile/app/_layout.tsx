@@ -27,7 +27,7 @@ export const unstable_settings = {
 function RootLayoutContent() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
-  const { isLoading, isSignedIn, user } = useAuth();
+  const { isLoading, isRestoring, isSignedIn, user } = useAuth();
   
   const [fontsLoaded, fontError] = useFonts({
     Manrope: Manrope_400Regular,
@@ -56,9 +56,9 @@ function RootLayoutContent() {
 
     const inAuthGroup = segments?.[0] === 'login' || segments?.[0] === 'register';
     const inTabsGroup = segments?.[0] === '(tabs)';
-    console.log('[Navigation] Check:', { isSignedIn, inAuthGroup, inTabsGroup, segments: segments?.[0], isLoading });
+    console.log('[Navigation] Check:', { isSignedIn, inAuthGroup, inTabsGroup, segments: segments?.[0], isLoading, isRestoring });
 
-    if (isLoading) return;
+    if (isLoading || isRestoring) return;
 
     // Jika sudah login dan belum di tab utama, redirect ke dashboard
     if (isSignedIn && !inTabsGroup) {
@@ -71,7 +71,7 @@ function RootLayoutContent() {
       console.log('[Navigation] Redirecting to login');
       router.replace('/login');
     }
-  }, [fontsLoaded, isSignedIn, user?.role, segments, router, isLoading]);
+  }, [fontsLoaded, isSignedIn, user?.role, segments, router, isLoading, isRestoring]);
 
   // Show minimal UI while fonts load
   if (!fontsLoaded) {

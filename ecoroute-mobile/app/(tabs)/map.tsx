@@ -5,15 +5,14 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
   ActivityIndicator
 } from 'react-native';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors } from '@/constants/theme';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline, UrlTile } from 'react-native-maps';
 import { get } from '@/utils/api';
+import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
+import { useTpsStore } from '@/stores/tps-store';
+import type { TPSData, TPSStatus } from '@/types/tps';
 import { 
   useFonts, 
   Manrope_400Regular, 
@@ -21,26 +20,43 @@ import {
   Manrope_700Bold 
 } from '@expo-google-fonts/manrope';
 
-const { width, height } = Dimensions.get('window');
+type MapStop = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  status?: TPSStatus;
+  latestReading?: {
+    fullness_pct?: number;
+    alert_level?: TPSStatus;
+    ammonia_ppm?: number;
+    temperature_c?: number;
+    timestamp?: string;
+  };
+  distanceFromPrevKm?: number;
+};
+
+type RoutePoint = { latitude: number; longitude: number };
 
 export default function TPSMapScreen() {
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
+  const setSelectedTPSId = useTpsStore((state) => state.setSelectedTPSId);
+  const upsertTPSList = useTpsStore((state) => state.upsertTPSList);
+  const setNearbyTpsList = useTpsStore((state) => state.setNearbyTpsList);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [routeStops, setRouteStops] = useState<any[]>([]);
-  const [routeLine, setRouteLine] = useState<{ latitude: number; longitude: number }[]>([]);
+  const [routeStops, setRouteStops] = useState<MapStop[]>([]);
+  const [routeLine, setRouteLine] = useState<RoutePoint[]>([]);
   const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'normal'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fallbackStops = useMemo(
+  const fallbackStops = useMemo<MapStop[]>(
     () => [
       {
         id: 'start-itb',
         name: 'ITB Ganesha (Start)',
         latitude: -6.89148,
         longitude: 107.6107,
-        status: 'start',
+        status: 'normal',
         latestReading: {
           fullness_pct: 10,
           alert_level: 'normal',
@@ -73,7 +89,7 @@ export default function TPSMapScreen() {
         name: 'TPS Tamansari (End)',
         latitude: -6.90035,
         longitude: 107.60657,
-        status: 'end',
+        status: 'normal',
         latestReading: {
           fullness_pct: 30,
           alert_level: 'normal',
@@ -103,26 +119,30 @@ export default function TPSMapScreen() {
           get('/tps/nearby?lat=-6.89148&lng=107.6107&radiusKm=5&limit=12'),
         ]);
 
-        const stops = nearbyData?.data
-          ?.map((item: any, index: number) => ({
+        const stops = (nearbyData?.data || [])
+          .map((item: any, index: number): MapStop => ({
             id: item?.tps?.id || `nearby-${index}`,
-            name: item?.tps?.name,
+            name: item?.tps?.name || 'TPS',
             latitude: Number(item?.tps?.latitude),
             longitude: Number(item?.tps?.longitude),
             latestReading: item?.latestReading,
             distanceFromPrevKm: item?.distance_km,
           }))
-          .filter((stop: any) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
+          .filter((stop: MapStop) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
 
-        const fallbackRouteStops = routeData?.stops
-          ?.map((stop: any, index: number) => ({
-            ...stop,
-            id: stop.id || `stop-${index}`,
+        const fallbackRouteStops = (routeData?.stops || [])
+          .map((stop: any, index: number): MapStop => ({
+            id: stop?.id || `stop-${index}`,
+            name: stop?.name || 'TPS',
+            latitude: Number(stop?.latitude),
+            longitude: Number(stop?.longitude),
+            latestReading: stop?.latestReading,
+            distanceFromPrevKm: stop?.distanceFromPrevKm,
           }))
-          .filter((stop: any) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
+          .filter((stop: MapStop) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
 
         const geometry = routeData?.maps?.geometry?.coordinates || [];
-        const line = geometry.map((coord: [number, number]) => ({
+        const line = geometry.map((coord: [number, number]): RoutePoint => ({
           latitude: coord[1],
           longitude: coord[0],
         }));
@@ -148,32 +168,33 @@ export default function TPSMapScreen() {
     };
   }, [fallbackStops]);
 
+  const visibleStops = useMemo(() => (routeStops.length ? routeStops : fallbackStops), [routeStops, fallbackStops]);
+
   const mapRegion = useMemo(() => {
-    const points = routeStops.length ? routeStops : fallbackStops;
-    const latitudes = points.map((p) => p.latitude);
-    const longitudes = points.map((p) => p.longitude);
-    const minLat = Math.min(...latitudes);
-    const maxLat = Math.max(...latitudes);
-    const minLng = Math.min(...longitudes);
-    const maxLng = Math.max(...longitudes);
-    return {
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLng + maxLng) / 2,
-      latitudeDelta: Math.max(0.01, maxLat - minLat + 0.01),
-      longitudeDelta: Math.max(0.01, maxLng - minLng + 0.01),
-    };
-  }, [routeStops, fallbackStops]);
+    const points = visibleStops.map((stop) => ({ latitude: stop.latitude, longitude: stop.longitude }));
+    return getRegionForPoints(points, 0.01);
+  }, [visibleStops]);
+
+  useEffect(() => {
+    const mapped = visibleStops.map((stop): TPSData => ({
+      id: stop.id,
+      name: stop.name,
+      fullness: Number(stop.latestReading?.fullness_pct ?? 0),
+      ammonia: Number(stop.latestReading?.ammonia_ppm ?? 0),
+      temperature: Number(stop.latestReading?.temperature_c ?? 0),
+      lastUpdate: stop.latestReading?.timestamp ?? '',
+      latitude: stop.latitude,
+      longitude: stop.longitude,
+    }));
+    upsertTPSList(mapped);
+    setNearbyTpsList(mapped);
+  }, [visibleStops, upsertTPSList, setNearbyTpsList]);
 
   if (!fontsLoaded) {
     return <ActivityIndicator size="large" style={{ flex: 1 }} color="#002045" />;
   }
 
-  const visibleStops = routeStops.length ? routeStops : fallbackStops;
-  const polylineCoords = routeLine.length
-    ? routeLine
-    : visibleStops.map((stop) => ({ latitude: stop.latitude, longitude: stop.longitude }));
-
-  const mapStatus = (stop: any) => {
+  const mapStatus = (stop: MapStop) => {
     const level = stop?.latestReading?.alert_level || stop?.status || 'normal';
     if (level === 'critical') return { key: 'critical', label: 'KRITIS', color: '#BA1A1A', bg: '#FFDAD6' };
     if (level === 'warning') return { key: 'warning', label: 'WASPADA', color: '#D97706', bg: '#FEF3C7' };
@@ -182,27 +203,29 @@ export default function TPSMapScreen() {
 
   const filteredStops = visibleStops.filter((stop) => {
     const status = mapStatus(stop);
-  const matchFilter = filter === 'all' || status.key === filter;
+    const matchFilter = filter === 'all' || status.key === filter;
     const matchSearch = stop?.name?.toLowerCase?.().includes(searchQuery.toLowerCase());
     return matchFilter && matchSearch;
   });
+
+  const markers: MapMarkerData[] = filteredStops.map((stop) => ({
+    id: stop.id,
+    name: stop.name,
+    latitude: stop.latitude,
+    longitude: stop.longitude,
+    status: mapStatus(stop).key as TPSStatus,
+  }));
 
   return (
     <View style={styles.container}>
       {/* OpenStreetMap View */}
       <View style={styles.mapContainer}>
-        <MapView style={styles.map} initialRegion={mapRegion}>
-          <UrlTile urlTemplate="https://tile.openstreetmap.fr/hot/{z}/{x}/{y}.png" maximumZ={19} />
-          {filteredStops.map((stop) => (
-            <Marker
-              key={stop.id}
-              coordinate={{ latitude: stop.latitude, longitude: stop.longitude }}
-              title={stop.name}
-              pinColor={stop.status === 'critical' ? '#BA1A1A' : stop.status === 'warning' ? '#F59E0B' : '#4BB278'}
-            />
-          ))}
-          <Polyline coordinates={polylineCoords} strokeColor="#1A365D" strokeWidth={4} />
-        </MapView>
+        <TpsMapView
+          markers={markers}
+          routeLine={routeLine}
+          initialRegion={mapRegion}
+          onMarkerPress={(markerId) => setSelectedTPSId(markerId)}
+        />
 
         {isLoading && (
           <View style={styles.mapLoadingOverlay}>
@@ -271,6 +294,7 @@ export default function TPSMapScreen() {
                 statusColor={status.color}
                 bgIcon={status.bg}
                 icon={status.label === 'KRITIS' ? 'delete-outline' : status.label === 'WASPADA' ? 'warning' : 'check-circle'}
+                onPress={() => setSelectedTPSId(stop.id)}
               />
             );
           })}
@@ -291,10 +315,10 @@ function FilterChip({ label, color, active, onPress }: any) {
   );
 }
 
-function TPSItem({ name, dist, percent, status, statusColor, bgIcon, icon }: any) {
+function TPSItem({ name, dist, percent, status, statusColor, bgIcon, icon, onPress }: any) {
   const manrope = { fontFamily: 'Manrope' };
   return (
-    <TouchableOpacity style={styles.tpsItem}>
+    <TouchableOpacity style={styles.tpsItem} onPress={onPress}>
       <View style={[styles.tpsIconContainer, { backgroundColor: bgIcon }]}>
         <MaterialIcons name={icon || "delete-outline"} size={20} color={statusColor} />
       </View>

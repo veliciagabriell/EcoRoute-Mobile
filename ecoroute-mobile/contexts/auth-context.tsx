@@ -1,19 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import Constants from 'expo-constants';
-import { post, setAccessToken } from '@/utils/api';
-
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: 'umum' | 'petugas' | 'admin';
-  work_area?: string | null;
-}
+import { setAccessToken } from '@/utils/api';
+import {
+  clearSession,
+  fetchMe,
+  loadSession,
+  loginUser,
+  refreshAccessToken,
+  registerUser,
+  saveSession,
+  type AuthUser,
+} from '@/services/auth-service';
 
 interface AuthContextType {
   isLoading: boolean;
+  isRestoring: boolean;
   isSignedIn: boolean;
-  user: User | null;
+  user: AuthUser | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, namaLengkap: string, role: string) => Promise<void>;
   logout: () => void;
@@ -23,25 +25,59 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(true);
   const [isSignedIn, setIsSignedIn] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const isMountedRef = useRef(true);
 
-  const demoLoginEnabled = (Constants.expoConfig as any)?.extra?.DEMO_LOGIN !== false;
-
-  const applyDemoLogin = (email: string) => {
-    setAccessToken('demo-access-token');
-    setUser({
-      id: 'demo-user',
-      email,
-      name: 'Demo Admin',
-      role: 'admin',
-      work_area: null,
-    });
-    setIsSignedIn(true);
-  };
-
   useEffect(() => {
+    const restoreSession = async () => {
+      setIsRestoring(true);
+      try {
+        const stored = await loadSession();
+        if (!stored) {
+          setIsSignedIn(false);
+          setUser(null);
+          return;
+        }
+
+        setAccessToken(stored.accessToken);
+
+        try {
+          const profile = await fetchMe();
+          if (!isMountedRef.current) return;
+          setUser(profile);
+          setIsSignedIn(true);
+          return;
+        } catch {
+          if (!stored.refreshToken) throw new Error('Missing refresh token');
+          const newAccessToken = await refreshAccessToken(stored.refreshToken);
+          setAccessToken(newAccessToken);
+          const profile = await fetchMe();
+          if (!isMountedRef.current) return;
+          await saveSession({
+            access_token: newAccessToken,
+            refresh_token: stored.refreshToken,
+            user: profile,
+          });
+          setUser(profile);
+          setIsSignedIn(true);
+        }
+      } catch {
+        await clearSession();
+        if (isMountedRef.current) {
+          setIsSignedIn(false);
+          setUser(null);
+        }
+      } finally {
+        if (isMountedRef.current) {
+          setIsRestoring(false);
+        }
+      }
+    };
+
+    restoreSession();
+
     return () => {
       isMountedRef.current = false;
     };
@@ -56,18 +92,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (demoLoginEnabled) {
-      console.log('[Auth] Demo login enabled - skipping API call');
-      setIsLoading(true);
-      applyDemoLogin(email);
-      setIsLoading(false);
-      return;
-    }
-
     setIsLoading(true);
     console.log('[Auth] Starting login for:', email);
     try {
-      const data = await post('/auth/login', { email, password });
+      const data = await loginUser({ email, password });
       console.log('[Auth] Login response:', data);
       
       if (!isMountedRef.current) {
@@ -76,30 +104,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       
       if (data?.access_token && data?.user) {
-        setAccessToken(data.access_token);
         console.log('[Auth] Setting user:', data.user);
-        setUser({
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.name,
-          role: data.user.role,
-          work_area: data.user.work_area,
-        });
+        setUser(data.user);
         setIsSignedIn(true);
       } else {
         throw new Error('Response tidak valid');
       }
     } catch (err: any) {
       console.error('[Auth] Login error:', err);
-      const message = typeof err?.message === 'string' ? err.message : '';
-      const isTimeout = message.toLowerCase().includes('timeout');
-      const isFetchError = message.toLowerCase().includes('failed to fetch');
-
-      if (demoLoginEnabled && (isTimeout || isFetchError)) {
-        console.warn('[Auth] Login failed - using demo login fallback');
-        applyDemoLogin(email);
-        return;
-      }
       if (isMountedRef.current) {
         setIsLoading(false);
       }
@@ -121,45 +133,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('[Auth] Starting register:', { email, role });
     try {
       const backendRole = ['umum', 'petugas', 'admin'].includes(role) ? role : 'umum';
-      const registerResp = await post('/auth/register', {
+      const registerResp = await registerUser({
         name: namaLengkap,
         email,
         password,
-        role: backendRole,
+        role: backendRole as 'umum' | 'petugas' | 'admin',
       });
       
       console.log('[Auth] Register response:', registerResp);
       if (!isMountedRef.current) return;
-      
-      // Auto-login after successful registration
-      console.log('[Auth] Auto-logging in after register...');
-      const loginResp = await post('/auth/login', { email, password });
-      
-      if (!isMountedRef.current) return;
-      
-      if (loginResp?.access_token && loginResp?.user) {
-        setAccessToken(loginResp.access_token);
-        console.log('[Auth] Setting user after register:', loginResp.user);
-        setUser({
-          id: loginResp.user.id,
-          email: loginResp.user.email,
-          name: loginResp.user.name,
-          role: loginResp.user.role,
-          work_area: loginResp.user.work_area,
-        });
-        setIsSignedIn(true);
-      }
     } catch (err: any) {
       console.error('[Auth] Register error:', err);
-      const message = typeof err?.message === 'string' ? err.message : '';
-      const isTimeout = message.toLowerCase().includes('timeout');
-      const isFetchError = message.toLowerCase().includes('failed to fetch');
-
-      if (demoLoginEnabled && (isTimeout || isFetchError)) {
-        console.warn('[Auth] Register failed - using demo login fallback');
-        applyDemoLogin(email);
-        return;
-      }
       if (isMountedRef.current) {
         setIsLoading(false);
       }
@@ -173,13 +157,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    setAccessToken('');
+    clearSession();
     setUser(null);
     setIsSignedIn(false);
   };
 
   return (
-    <AuthContext.Provider value={{ isLoading, isSignedIn, user, login, register, logout }}>
+    <AuthContext.Provider value={{ isLoading, isRestoring, isSignedIn, user, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

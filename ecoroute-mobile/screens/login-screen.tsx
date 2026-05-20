@@ -4,7 +4,6 @@ import { useAuth } from '@/contexts/auth-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemedText } from '@/components/themed-text';
-import { Button } from '@/components/button';
 import { MaterialIcons } from '@expo/vector-icons';
 
 export default function LoginScreen({ onNavigateToRegister }: { onNavigateToRegister: () => void }) {
@@ -12,8 +11,8 @@ export default function LoginScreen({ onNavigateToRegister }: { onNavigateToRegi
   const colors = Colors[colorScheme ?? 'light'];
   const { login, isLoading } = useAuth();
 
-  const [email, setEmail] = useState('admin@ecoroute.com');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -21,6 +20,18 @@ export default function LoginScreen({ onNavigateToRegister }: { onNavigateToRegi
   const handleLogin = async () => {
     setError('');
     if (isLoading) return; // Prevent double-click
+    if (!email.trim()) {
+      setError('Email tidak boleh kosong');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('Format email tidak valid');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Kata sandi minimal 8 karakter');
+      return;
+    }
     console.log('[LoginScreen] handleLogin called with:', email);
     try {
       await login(email, password);

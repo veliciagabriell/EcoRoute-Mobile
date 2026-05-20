@@ -3,6 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 
 import { Footer, TabItem } from '@/components/footer';
+import { ProtectedRoute } from '@/components/protected-route';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/contexts/auth-context';
@@ -82,74 +83,72 @@ export default function TabLayout() {
   };
 
   return (
-    <View style={styles.container}>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: { display: 'none' },
-        }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: 'Dashboard',
-            href: user?.role === 'admin' ? '/(tabs)' : null,
+    <ProtectedRoute>
+      <View style={styles.container}>
+        <Tabs
+          screenOptions={{
+            headerShown: false,
+            tabBarStyle: { display: 'none' },
           }}
-        />
-        <Tabs.Screen
-          name="ecobot"
-          options={{
-            title: 'EcoBot',
-            href: user?.role !== 'admin' ? '/(tabs)/ecobot' : null,
-          }}
-        />
-        <Tabs.Screen
-          name="explore"
-          options={{
-            title: 'TPS',
-          }}
-        />
-        <Tabs.Screen
-          name="sensors"
-          options={{
-            title: 'Monitor Sensor',
-            href: user?.role === 'petugas' ? '/(tabs)/sensors' : null,
-          }}
-        />
-        <Tabs.Screen
-          name="report"
-          options={{
-            title: 'Report',
-          }}
-        />
-        <Tabs.Screen
-          name="profile"
-          options={{
-            title: 'Profile',
-          }}
-        />
-        <Tabs.Screen
-          name="help"
-          options={{
-            title: 'Pusat Bantuan',
-            href: null,
-          }}
-        />
-        <Tabs.Screen
-          name="settings"
-          options={{
-            title: 'Pengaturan',
-            href: null,
-          }}
-        />
-      </Tabs>
-      
-      <Footer 
-        tabs={tabs} 
-        activeTab={activeTab} 
-        onTabPress={handleTabPress} 
-      />
-    </View>
+        >
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: 'Dashboard',
+              href: user?.role === 'admin' ? '/(tabs)' : null,
+            }}
+          />
+          <Tabs.Screen
+            name="ecobot"
+            options={{
+              title: 'EcoBot',
+              href: user?.role !== 'admin' ? '/(tabs)/ecobot' : null,
+            }}
+          />
+          <Tabs.Screen
+            name="explore"
+            options={{
+              title: 'TPS',
+            }}
+          />
+          <Tabs.Screen
+            name="sensors"
+            options={{
+              title: 'Monitor Sensor',
+              href: user?.role === 'petugas' ? '/(tabs)/sensors' : null,
+            }}
+          />
+          <Tabs.Screen
+            name="report"
+            options={{
+              title: 'Report',
+            }}
+          />
+          <Tabs.Screen
+            name="profile"
+            options={{
+              title: 'Profile',
+            }}
+          />
+          <Tabs.Screen
+            name="help"
+            options={{
+              title: 'Pusat Bantuan',
+              href: null,
+            }}
+          />
+          <Tabs.Screen
+            name="settings"
+            options={{
+              title: 'Pengaturan',
+              href: null,
+            }}
+          />
+        </Tabs>
+
+        <Footer tabs={tabs} activeTab={activeTab} onTabPress={handleTabPress} />
+      </View>
+    </ProtectedRoute>
   );
 }
 

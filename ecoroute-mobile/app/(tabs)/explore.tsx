@@ -1,32 +1,125 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ImageBackground, Image } from 'react-native';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors } from '@/constants/theme';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '@/components/header';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { get } from '@/utils/api';
+import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
+import { useMqttSensor } from '@/hooks/use-mqtt-sensor';
+import { useTpsStore } from '@/stores/tps-store';
+import type { TPSData } from '@/types/tps';
 
 export default function TPSDetailScreen() {
   const router = useRouter();
-  const [tpsList, setTpsList] = useState<any[]>([]);
+  const [tpsList, setTpsList] = useState<TPSData[]>([]);
+  const selectedTPSId = useTpsStore((state) => state.selectedTPSId);
+  const setSelectedTPSId = useTpsStore((state) => state.setSelectedTPSId);
+  const upsertTPSList = useTpsStore((state) => state.upsertTPSList);
+  const selectedTPS = useTpsStore((state) =>
+    state.selectedTPSId ? state.tpsById[state.selectedTPSId] : null
+  );
+
+  const activeTPS = selectedTPS ?? tpsList[0] ?? null;
+  const mqttState = useMqttSensor(activeTPS?.id ?? null);
+
+  const activeMarker = useMemo<MapMarkerData | null>(() => {
+    if (!activeTPS) return null;
+    if (!Number.isFinite(activeTPS.latitude) || !Number.isFinite(activeTPS.longitude)) return null;
+    return {
+      id: activeTPS.id,
+      name: activeTPS.name,
+      latitude: activeTPS.latitude,
+      longitude: activeTPS.longitude,
+      status: 'normal',
+    };
+  }, [activeTPS]);
+
+  const activeRegion = useMemo(() => {
+    if (!activeMarker) {
+      return getRegionForPoints([], 0.05);
+    }
+    return getRegionForPoints(
+      [{ latitude: activeMarker.latitude, longitude: activeMarker.longitude }],
+      0.01
+    );
+  }, [activeMarker]);
+
+  const formatValue = (value: number, digits = 0) =>
+    Number.isFinite(value) ? value.toFixed(digits) : '-';
+
+  const formatLastUpdate = (iso: string) => {
+    if (!iso) return '-';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) return '-';
+    return new Intl.DateTimeFormat('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: 'short',
+    }).format(date);
+  };
 
   useEffect(() => {
     let mounted = true;
     async function load() {
       try {
         const data = await get('/tps');
-        if (mounted) setTpsList(data || []);
+        const list = data?.data || data || [];
+        const mapped = (list as any[])
+          .map((item) => {
+            const tps = item?.tps ?? item;
+            const latest = item?.latestReading ?? item?.latest_reading ?? item?.sensor_data;
+            if (!tps?.id) return null;
+            const latitude = Number(tps?.latitude);
+            const longitude = Number(tps?.longitude);
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+            const fullness = Number(latest?.fullness_pct ?? latest?.fullness ?? 0);
+            const ammonia = Number(latest?.ammonia_ppm ?? latest?.ammonia ?? 0);
+            const temperature = Number(latest?.temperature_c ?? latest?.temperature ?? 0);
+            return {
+              id: String(tps.id),
+              name: String(tps.name ?? 'TPS'),
+              fullness,
+              ammonia,
+              temperature,
+              lastUpdate: latest?.timestamp ?? '',
+              latitude,
+              longitude,
+            } as TPSData;
+          })
+          .filter(Boolean) as TPSData[];
+
+        if (mounted) {
+          setTpsList(mapped);
+          upsertTPSList(mapped);
+          if (!selectedTPSId && mapped[0]) {
+            setSelectedTPSId(mapped[0].id);
+          }
+        }
       } catch (err) {
         console.warn('Failed to fetch TPS list', err);
       }
     }
     load();
     return () => { mounted = false };
-  }, []);
+  }, [selectedTPSId, setSelectedTPSId, upsertTPSList]);
+
+  const statusLabel = useMemo(() => {
+    if (mqttState.error) return 'STATUS: ERROR';
+    if (!activeTPS) return 'STATUS: TIDAK ADA DATA';
+    return mqttState.isLive ? 'STATUS: LIVE' : 'STATUS: MENUNGGU DATA';
+  }, [mqttState.error, mqttState.isLive, activeTPS]);
+
+  const statusDesc = useMemo(() => {
+    if (mqttState.error) return mqttState.error;
+    if (!activeTPS) return 'Belum ada TPS dipilih.';
+    if (mqttState.isLive) {
+      return `Update terakhir: ${formatLastUpdate(activeTPS.lastUpdate)}`;
+    }
+    return 'Menunggu pembaruan sensor dari perangkat.';
+  }, [mqttState.error, mqttState.isLive, activeTPS]);
 
   return (
     <View style={styles.container}>
@@ -40,10 +133,16 @@ export default function TPSDetailScreen() {
         {/* Simple TPS list fetched from backend */}
         {tpsList.length > 0 && (
           <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-            {tpsList.map((item: any) => (
-              <TouchableOpacity key={item.tps.id} style={{ padding: 12, backgroundColor: '#FFFFFF', borderRadius: 8, marginBottom: 8 }} onPress={() => router.push((`/(tabs)/explore/${item.tps.id}`) as any)}>
-                <ThemedText style={{ fontWeight: '600' }}>{item.tps.name}</ThemedText>
-                <ThemedText style={{ color: '#666' }}>{item.tps.area} — {item.latestReading ? `${item.latestReading.fullness_pct}%` : 'No data'}</ThemedText>
+            {tpsList.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={{ padding: 12, backgroundColor: '#FFFFFF', borderRadius: 8, marginBottom: 8 }}
+                onPress={() => setSelectedTPSId(item.id)}
+              >
+                <ThemedText style={{ fontWeight: '600' }}>{item.name}</ThemedText>
+                <ThemedText style={{ color: '#666' }}>
+                  {Number.isFinite(item.fullness) ? `${item.fullness.toFixed(0)}%` : '-'} Penuh
+                </ThemedText>
               </TouchableOpacity>
             ))}
           </View>
@@ -53,27 +152,39 @@ export default function TPSDetailScreen() {
             <MaterialIcons name="warning" size={16} color="#FFFFFF" />
           </View>
           <View style={styles.statusTextBox}>
-            <ThemedText style={styles.statusTitle}>STATUS: KRITIS</ThemedText>
-            <ThemedText style={styles.statusDesc}>Kapasitas hampir penuh. Segera jadwalkan pengangkutan.</ThemedText>
+            <ThemedText style={styles.statusTitle}>{statusLabel}</ThemedText>
+            <ThemedText style={styles.statusDesc}>{statusDesc}</ThemedText>
           </View>
         </View>
 
+        {activeTPS && !mqttState.isLive && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator size="small" color="#1A365D" />
+            <ThemedText style={styles.loadingText}>Menunggu data MQTT...</ThemedText>
+          </View>
+        )}
+
         <View style={styles.locationCard}>
           <View style={styles.locationImagePlaceholder}>
-            <ImageBackground 
-              source={{ uri: 'https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?q=80&w=600&auto=format&fit=crop' }} 
-              style={StyleSheet.absoluteFillObject}
-              imageStyle={{ borderRadius: 12 }}
-            >
-              <View style={styles.locationGradient} />
-              <View style={styles.locationTextContainer}>
-                <ThemedText style={styles.locationTitle}>TPS Kebon Jeruk #04</ThemedText>
-                <View style={styles.locationAddressBox}>
-                  <MaterialIcons name="location-on" size={12} color="#EFF4FF" />
-                  <ThemedText style={styles.locationAddress}>Jl. Panjang Kebon Jeruk, Jakarta Barat</ThemedText>
-                </View>
+            {activeMarker ? (
+              <TpsMapView markers={[activeMarker]} initialRegion={activeRegion} />
+            ) : (
+              <View style={styles.mapEmptyState}>
+                <ThemedText style={styles.mapEmptyText}>Lokasi belum tersedia</ThemedText>
               </View>
-            </ImageBackground>
+            )}
+            <View style={styles.locationGradient} />
+            <View style={styles.locationTextContainer}>
+              <ThemedText style={styles.locationTitle}>{activeTPS?.name || 'TPS'}</ThemedText>
+              <View style={styles.locationAddressBox}>
+                <MaterialIcons name="location-on" size={12} color="#EFF4FF" />
+                <ThemedText style={styles.locationAddress}>
+                  {activeTPS && Number.isFinite(activeTPS.latitude) && Number.isFinite(activeTPS.longitude)
+                    ? `${activeTPS.latitude.toFixed(5)}, ${activeTPS.longitude.toFixed(5)}`
+                    : 'Lokasi tidak tersedia'}
+                </ThemedText>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -86,11 +197,21 @@ export default function TPSDetailScreen() {
               <ThemedText style={[styles.metricTitle, { color: '#BA1A1A' }]}>Fullness</ThemedText>
             </View>
             <View style={styles.metricRow}>
-              <ThemedText style={styles.metricValueLarge}>98</ThemedText>
+              <ThemedText style={styles.metricValueLarge}>
+                {formatValue(activeTPS?.fullness ?? Number.NaN)}
+              </ThemedText>
               <ThemedText style={styles.metricUnit}>%</ThemedText>
             </View>
             <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: '98%', backgroundColor: '#BA1A1A' }]} />
+              <View
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${Math.min(Math.max(activeTPS?.fullness ?? 0, 0), 100)}%`,
+                    backgroundColor: '#BA1A1A',
+                  },
+                ]}
+              />
             </View>
           </View>
 
@@ -102,7 +223,9 @@ export default function TPSDetailScreen() {
               <ThemedText style={styles.metricTitle}>Ammonia</ThemedText>
             </View>
             <View style={styles.metricRow}>
-              <ThemedText style={styles.metricValueLarge}>67</ThemedText>
+              <ThemedText style={styles.metricValueLarge}>
+                {formatValue(activeTPS?.ammonia ?? Number.NaN)}
+              </ThemedText>
               <ThemedText style={styles.metricUnit}>ppm</ThemedText>
             </View>
             <ThemedText style={styles.metricFootnote}>Normal &lt; 50 ppm</ThemedText>
@@ -116,8 +239,10 @@ export default function TPSDetailScreen() {
               <ThemedText style={styles.metricTitle}>Temperature</ThemedText>
             </View>
             <View style={styles.metricRow}>
-              <ThemedText style={styles.metricValueLarge}>32</ThemedText>
-              <ThemedText style={styles.metricUnit}>�C</ThemedText>
+              <ThemedText style={styles.metricValueLarge}>
+                {formatValue(activeTPS?.temperature ?? Number.NaN)}
+              </ThemedText>
+              <ThemedText style={styles.metricUnit}>C</ThemedText>
             </View>
           </View>
 
@@ -129,9 +254,13 @@ export default function TPSDetailScreen() {
               <ThemedText style={styles.metricTitle}>Last Update</ThemedText>
             </View>
             <View style={styles.metricRow}>
-              <ThemedText style={styles.metricValueLarge}>10:45</ThemedText>
+              <ThemedText style={styles.metricValueLarge}>
+                {activeTPS ? formatLastUpdate(activeTPS.lastUpdate) : '-'}
+              </ThemedText>
             </View>
-            <ThemedText style={styles.metricFootnote}>Hari ini</ThemedText>
+            <ThemedText style={styles.metricFootnote}>
+              {mqttState.isLive ? 'Realtime' : 'Belum realtime'}
+            </ThemedText>
           </View>
         </View>
 
@@ -257,6 +386,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#93000A',
     lineHeight: 20,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginTop: 12,
+    gap: 8,
+  },
+  loadingText: {
+    fontFamily: 'Manrope',
+    fontSize: 12,
+    color: '#1A365D',
+  },
+  mapEmptyState: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E5EEFF',
+  },
+  mapEmptyText: {
+    fontFamily: 'Manrope',
+    fontSize: 12,
+    color: '#1A365D',
   },
   locationCard: {
     marginHorizontal: 20,

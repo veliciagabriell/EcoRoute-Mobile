@@ -4,7 +4,6 @@ import { useAuth } from '@/contexts/auth-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemedText } from '@/components/themed-text';
-import { Button } from '@/components/button';
 import { MaterialIcons } from '@expo/vector-icons';
 
 export default function RegisterScreen({ onNavigateToLogin }: { onNavigateToLogin: () => void }) {
@@ -32,6 +31,10 @@ export default function RegisterScreen({ onNavigateToLogin }: { onNavigateToLogi
     }
     if (!email.trim()) {
       setError('Email tidak boleh kosong');
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setError('Format email tidak valid');
       return;
     }
     if (password.length < 8) {

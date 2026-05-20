@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Dimensions, ActivityIndicator } from 'react-native';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Colors } from '@/constants/theme';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Header } from '@/components/header';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router'; // 1. Import useRouter
 import { get } from '@/utils/api';
+import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
+import { useTpsStore } from '@/stores/tps-store';
+import type { TPSData } from '@/types/tps';
 import { 
   useFonts, 
   Manrope_400Regular, 
@@ -15,13 +16,11 @@ import {
   Manrope_700Bold 
 } from '@expo-google-fonts/manrope';
 
-const { width } = Dimensions.get('window');
-
 export default function RouteScreen() {
   const router = useRouter(); // 2. Inisialisasi router
-  const colorScheme = useColorScheme();
-  const colors = Colors[colorScheme ?? 'light'];
+  const nearbyTpsList = useTpsStore((state) => state.nearbyTpsList);
   const [routeStops, setRouteStops] = useState<any[]>([]);
+  const [routeLine, setRouteLine] = useState<{ latitude: number; longitude: number }[]>([]);
   const [summary, setSummary] = useState({ distanceKm: 0, durationMin: 0 });
 
   const [fontsLoaded] = useFonts({
@@ -32,30 +31,127 @@ export default function RouteScreen() {
   });
 
   const manrope = { fontFamily: 'Manrope' };
-  const inter = { fontFamily: 'Inter' };
+
+  const cachedStops = useMemo(
+    () =>
+      nearbyTpsList.map((tps: TPSData) => ({
+        id: tps.id,
+        name: tps.name,
+        latitude: tps.latitude,
+        longitude: tps.longitude,
+        latestReading: {
+          fullness_pct: tps.fullness,
+          alert_level: 'normal',
+          ammonia_ppm: tps.ammonia,
+          temperature_c: tps.temperature,
+          timestamp: tps.lastUpdate,
+        },
+      })),
+    [nearbyTpsList]
+  );
+
+  const mapMarkers: MapMarkerData[] = useMemo(
+    () =>
+      routeStops
+        .filter((stop: any) => Number.isFinite(stop?.latitude) && Number.isFinite(stop?.longitude))
+        .map((stop: any) => ({
+          id: stop.id || stop.name,
+          name: stop.name,
+          latitude: Number(stop.latitude),
+          longitude: Number(stop.longitude),
+          status: stop?.latestReading?.alert_level || 'normal',
+        })),
+    [routeStops]
+  );
+
+  const mapRegion = useMemo(() => {
+    const points = mapMarkers.map((marker) => ({ latitude: marker.latitude, longitude: marker.longitude }));
+    return getRegionForPoints(points, 0.01);
+  }, [mapMarkers]);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
-        const data = await get('/routes/optimal?withMaps=true');
-  const stops = (data?.stops || []).slice().sort((a: any, b: any) => (a?.order || 0) - (b?.order || 0));
-        const distanceKm = data?.maps?.distance_m ? data.maps.distance_m / 1000 : data?.totalDistanceKm || 0;
-        const durationMin = data?.maps?.duration_s ? data.maps.duration_s / 60 : 0;
+        const [routeData, nearbyData, tpsData] = await Promise.all([
+          get('/routes/optimal?withMaps=true'),
+          get('/tps/nearby?lat=-6.89148&lng=107.6107&radiusKm=5&limit=12'),
+          get('/tps'),
+        ]);
+
+        const routeStops = (routeData?.stops || [])
+          .slice()
+          .sort((a: any, b: any) => (a?.order || 0) - (b?.order || 0));
+        const routeDistanceKm = routeData?.maps?.distance_m
+          ? routeData.maps.distance_m / 1000
+          : routeData?.totalDistanceKm || 0;
+        const routeDurationMin = routeData?.maps?.duration_s ? routeData.maps.duration_s / 60 : 0;
+        const geometry = routeData?.maps?.geometry?.coordinates || [];
+        const routeLine = geometry.map((coord: [number, number]) => ({
+          latitude: coord[1],
+          longitude: coord[0],
+        }));
+
+        const nearbyStops = (nearbyData?.data || [])
+          .map((item: any, index: number) => ({
+            id: item?.tps?.id || `nearby-${index}`,
+            name: item?.tps?.name || 'TPS',
+            latitude: Number(item?.tps?.latitude),
+            longitude: Number(item?.tps?.longitude),
+            latestReading: item?.latestReading,
+            distanceFromPrevKm: item?.distance_km,
+          }))
+          .filter((stop: any) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
+
+        const tpsList = (tpsData?.data || tpsData || [])
+          .map((item: any, index: number) => {
+            const tps = item?.tps ?? item;
+            if (!tps?.id) return null;
+            const latitude = Number(tps?.latitude);
+            const longitude = Number(tps?.longitude);
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+            return {
+              id: String(tps.id),
+              name: String(tps.name ?? `TPS ${index + 1}`),
+              latitude,
+              longitude,
+              latestReading: item?.latestReading ?? item?.latest_reading ?? item?.sensor_data,
+              distanceFromPrevKm: undefined,
+            };
+          })
+          .filter(Boolean) as any[];
+
+        const preferredStops = cachedStops.length
+          ? cachedStops
+          : nearbyStops.length
+            ? nearbyStops
+            : routeStops.length
+              ? routeStops
+              : tpsList;
+        const usingOptimalRoute = !cachedStops.length && !nearbyStops.length && routeStops.length > 0;
+        const nextLine = usingOptimalRoute
+          ? routeLine
+          : preferredStops.map((stop) => ({ latitude: stop.latitude, longitude: stop.longitude }));
+
         if (active) {
-          setRouteStops(stops);
-          setSummary({ distanceKm, durationMin });
+          setRouteStops(preferredStops);
+          setSummary({
+            distanceKm: usingOptimalRoute ? routeDistanceKm : 0,
+            durationMin: usingOptimalRoute ? routeDurationMin : 0,
+          });
+          setRouteLine(nextLine);
         }
       } catch {
         if (active) {
           setRouteStops([]);
           setSummary({ distanceKm: 0, durationMin: 0 });
+          setRouteLine([]);
         }
       }
     };
     load();
     return () => { active = false; };
-  }, []);
+  }, [cachedStops]);
 
   if (!fontsLoaded) {
     return (
@@ -87,8 +183,7 @@ export default function RouteScreen() {
         {/* Map Snippet Hero */}
         <View style={styles.mapHero}>
           <View style={styles.mapPlaceholder}>
-            <View style={styles.mapGradient} />
-            <MaterialCommunityIcons name="google-maps" size={40} color="#1A365D" style={{alignSelf: 'center', marginTop: 60, opacity: 0.2}} />
+            <TpsMapView markers={mapMarkers} routeLine={routeLine} initialRegion={mapRegion} />
           </View>
         </View>
 
@@ -212,10 +307,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   mapPlaceholder: { flex: 1, backgroundColor: '#EFF4FF' },
-  mapGradient: { 
-    ...StyleSheet.absoluteFillObject, 
-    backgroundColor: 'rgba(255, 255, 255, 0.4)' 
-  },
 
   summaryBento: {
     marginHorizontal: 20,

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, Pressable, Alert } from 'react-native';
 import { Header } from '@/components/header';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { get, post } from '@/utils/api';
+import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
 import { 
   useFonts, 
   Manrope_400Regular, 
@@ -35,6 +36,28 @@ export default function ReportScreen() {
   });
 
   const manrope = { fontFamily: 'Manrope' };
+
+  const selectedMarker = useMemo<MapMarkerData | null>(() => {
+    if (!selectedTps?.id) return null;
+    const latitude = Number(selectedTps?.latitude);
+    const longitude = Number(selectedTps?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return {
+      id: String(selectedTps.id),
+      name: String(selectedTps.name ?? 'TPS'),
+      latitude,
+      longitude,
+      status: 'normal',
+    };
+  }, [selectedTps]);
+
+  const selectedRegion = useMemo(() => {
+    if (!selectedMarker) return getRegionForPoints([], 0.05);
+    return getRegionForPoints(
+      [{ latitude: selectedMarker.latitude, longitude: selectedMarker.longitude }],
+      0.01
+    );
+  }, [selectedMarker]);
 
   useEffect(() => {
     let active = true;
@@ -186,11 +209,13 @@ export default function ReportScreen() {
             </TouchableOpacity>
             
             <View style={styles.mapPreview}>
-               <View style={styles.mapPinOverlay}>
-                  <View style={styles.pinCircle}>
-                    <MaterialIcons name="location-on" size={18} color="#FFFFFF" />
-                  </View>
-               </View>
+              {selectedMarker ? (
+                <TpsMapView markers={[selectedMarker]} initialRegion={selectedRegion} />
+              ) : (
+                <View style={styles.mapEmptyState}>
+                  <ThemedText style={styles.mapEmptyText}>Pilih TPS untuk melihat peta</ThemedText>
+                </View>
+              )}
             </View>
           </View>
         </View>
@@ -365,9 +390,9 @@ const styles = StyleSheet.create({
   
   locationButton: { borderWidth: 1, borderColor: '#0061A5', borderRadius: 8, height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
   locationButtonText: { color: '#0061A5', fontWeight: '700', fontSize: 14 },
-  mapPreview: { height: 190, backgroundColor: '#E5EEFF', borderRadius: 8, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  mapPinOverlay: { width: 32, height: 32, backgroundColor: '#BA1A1A', borderRadius: 16, borderBottomRightRadius: 2, transform: [{ rotate: '45deg' }], justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
-  pinCircle: { transform: [{ rotate: '-45deg' }] },
+  mapPreview: { height: 190, backgroundColor: '#E5EEFF', borderRadius: 8, overflow: 'hidden' },
+  mapEmptyState: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  mapEmptyText: { fontSize: 12, color: '#1A365D' },
 
   checkboxGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   checkboxItem: { width: '48%', height: 74, borderWidth: 1, borderColor: '#C4C6CF', borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },

@@ -16,7 +16,7 @@ console.log('[API] Using API_URL:', API_URL);
 
 let accessToken: string | null = null;
 
-export function setAccessToken(token: string) {
+export function setAccessToken(token: string | null) {
   accessToken = token;
 }
 
