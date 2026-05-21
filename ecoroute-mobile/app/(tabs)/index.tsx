@@ -1,4 +1,5 @@
-import { View, StyleSheet, ScrollView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { Header } from '@/components/header';
@@ -7,89 +8,162 @@ import { Card } from '@/components/card';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/auth-context';
+import { useRouter } from 'expo-router';
+import { get } from '@/utils/api';
+
+interface DashboardStats {
+  tpsKritis: number;
+  laporanHariIni: number;
+  totalTPS: number;
+  isLoading: boolean;
+}
+
+interface RecentReport {
+  id?: string | number;
+  description?: string;
+  severity?: string;
+  created_at?: string;
+  createdAt?: string;
+  tps?: { name?: string };
+  tps_id?: string | number;
+}
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const { user } = useAuth();
+  const router = useRouter();
+  const [stats, setStats] = useState<DashboardStats>({
+    tpsKritis: 0,
+    laporanHariIni: 0,
+    totalTPS: 0,
+    isLoading: true,
+  });
+  const [recentReports, setRecentReports] = useState<RecentReport[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadStats() {
+      try {
+        const tpsData = await get('/tps');
+        const tpsList: any[] = tpsData?.data || tpsData || [];
+
+        let tpsKritis = 0;
+        const totalTPS = Array.isArray(tpsList) ? tpsList.length : 0;
+
+        if (Array.isArray(tpsList)) {
+          tpsList.forEach((item: any) => {
+            const latest = item?.latestReading ?? item?.latest_reading ?? item?.sensor_data;
+            const fullness = Number(latest?.fullness_pct ?? latest?.fullness ?? 0);
+            if (fullness >= 80) tpsKritis++;
+          });
+        }
+
+        if (mounted) {
+          setStats(prev => ({ ...prev, tpsKritis, totalTPS }));
+        }
+      } catch (err) {
+        console.warn('[Dashboard] TPS fetch failed:', err);
+      }
+
+      try {
+        const reportsData = await get('/reports');
+        const reports: any[] = reportsData?.data || reportsData || [];
+
+        if (Array.isArray(reports)) {
+          const today = new Date().toDateString();
+          const todayReports = reports.filter((r: any) => {
+            const dateStr = r.created_at || r.createdAt || r.date || r.timestamp;
+            if (!dateStr) return false;
+            return new Date(dateStr).toDateString() === today;
+          });
+
+          if (mounted) {
+            setStats(prev => ({
+              ...prev,
+              laporanHariIni: todayReports.length > 0 ? todayReports.length : reports.length,
+            }));
+            setRecentReports(reports.slice(0, 4));
+          }
+        }
+      } catch (err) {
+        console.warn('[Dashboard] Reports fetch failed:', err);
+      }
+
+      if (mounted) {
+        setStats(prev => ({ ...prev, isLoading: false }));
+      }
+    }
+
+    loadStats();
+    return () => { mounted = false; };
+  }, []);
 
   const statusCards = [
     {
       id: 1,
       title: 'TPS Kritis',
-      count: 12,
-      label: 'locations',
+      count: stats.isLoading ? '...' : String(stats.tpsKritis),
+      label: 'lokasi penuh (≥80%)',
       color: colors.danger,
       icon: 'warning' as const,
     },
     {
       id: 2,
       title: 'Laporan Hari Ini',
-      count: 45,
-      label: 'reports',
+      count: stats.isLoading ? '...' : String(stats.laporanHariIni),
+      label: 'laporan masuk',
       color: colors.primary,
       icon: 'assignment' as const,
     },
     {
       id: 3,
-      title: 'Armada Aktif',
-      count: 8,
-      label: 'trucks online',
+      title: 'Total TPS',
+      count: stats.isLoading ? '...' : String(stats.totalTPS),
+      label: 'titik pembuangan',
       color: colors.success,
-      icon: 'local-shipping' as const,
+      icon: 'location-on' as const,
     },
   ];
 
   const quickActions = [
-    { id: 1, label: 'Cari TPS', icon: 'search' as const },
-    { id: 2, label: 'Buat Laporan', icon: 'add-circle' as const },
-    { id: 3, label: 'Chat EcoBot', icon: 'chat' as const },
+    { id: 1, label: 'Cari TPS', icon: 'search' as const, route: '/(tabs)/explore' },
+    { id: 2, label: 'Buat Laporan', icon: 'add-circle' as const, route: '/(tabs)/report' },
+    { id: 3, label: 'Profil Saya', icon: 'person' as const, route: '/(tabs)/profile' },
   ];
 
-  const recentActivities = [
-    {
-      id: 1,
-      title: 'Truck 04 completed collection at Zone B.',
-      time: '10 mins ago',
-      icon: 'check-circle' as const,
-    },
-    {
-      id: 2,
-      title: 'TPS Central reported full capacity.',
-      time: '32 mins ago',
-      icon: 'warning' as const,
-    },
-    {
-      id: 3,
-      title: 'Route Optimization triggered for Sector 7.',
-      time: '1 hour ago',
-      icon: 'map' as const,
-    },
-    {
-      id: 4,
-      title: 'Truck 02 completed collection at Zone A.',
-      time: '2 hours ago',
-      icon: 'check-circle' as const,
-    },
-  ];
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr);
+    if (Number.isNaN(date.getTime())) return '-';
+    return new Intl.DateTimeFormat('id-ID', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+  };
+
+  const getSeverityColor = (severity?: string) => {
+    if (!severity) return colors.primary;
+    const s = severity.toLowerCase();
+    if (s === 'tinggi' || s === 'high') return colors.danger;
+    if (s === 'sedang' || s === 'medium') return '#F59E0B';
+    return colors.success;
+  };
 
   return (
     <View style={styles.container}>
-      <Header 
-        title="EcoRoute" 
+      <Header
+        title="EcoRoute"
         showBack={false}
-
-        onProfilePress={() => console.log('Profile pressed')}
+        onProfilePress={() => router.push('/(tabs)/profile')}
       />
 
       <ScreenLayout scrollable={true}>
         {/* Welcome Section */}
         <View style={styles.welcomeSection}>
           <ThemedText style={[styles.greeting, { fontFamily: 'Manrope-Bold' }]}>
-            Halo, {user?.name || 'Admin'}
+            Halo, {user?.name || 'Petugas'}
           </ThemedText>
           <ThemedText style={[styles.subtitle, { color: colors.textSecondary, fontFamily: 'Manrope' }]}>
-            Here&apos;s the current overview of your fleet and collection points.
+            Berikut ringkasan kondisi TPS dan laporan terkini.
           </ThemedText>
         </View>
 
@@ -97,12 +171,7 @@ export default function HomeScreen() {
         {statusCards.map((card) => (
           <View key={card.id} style={styles.statusCardContainer}>
             <Card noPadding={true}>
-              <View
-                style={[
-                  styles.statusCardHeader,
-                  { borderBottomColor: card.color },
-                ]}
-              >
+              <View style={[styles.statusCardHeader, { borderBottomColor: card.color }]}>
                 <View style={styles.statusCardContent}>
                   <ThemedText style={styles.statusCardTitle}>{card.title}</ThemedText>
                   <ThemedText style={[styles.statusCardCount, { color: card.color }]}>
@@ -112,12 +181,7 @@ export default function HomeScreen() {
                     {card.label}
                   </ThemedText>
                 </View>
-                <View
-                  style={[
-                    styles.statusCardIcon,
-                    { backgroundColor: card.color + '15' },
-                  ]}
-                >
+                <View style={[styles.statusCardIcon, { backgroundColor: card.color + '15' }]}>
                   <MaterialIcons name={card.icon} size={24} color={card.color} />
                 </View>
               </View>
@@ -125,58 +189,52 @@ export default function HomeScreen() {
           </View>
         ))}
 
-        {/* Quick Actions */}
+
+        {/* Recent Reports */}
         <View style={styles.sectionContainer}>
-          <ThemedText style={styles.sectionTitle}>Quick Actions</ThemedText>
-          <View style={styles.quickActionsGrid}>
-            {quickActions.map((action) => (
-              <Card key={action.id} style={styles.quickActionCard}>
-                <View style={styles.quickActionContent}>
+          <ThemedText style={styles.sectionTitle}>Laporan Terbaru</ThemedText>
+
+          {stats.isLoading ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : recentReports.length > 0 ? (
+            recentReports.map((report, index) => (
+              <Card key={report.id ?? index}>
+                <View style={styles.activityItem}>
                   <View
                     style={[
-                      styles.quickActionIconContainer,
-                      { backgroundColor: colors.accent + '15' },
+                      styles.activityIcon,
+                      { backgroundColor: getSeverityColor(report.severity) + '20' },
                     ]}
                   >
-                    <MaterialIcons name={action.icon} size={28} color={colors.accent} />
+                    <MaterialIcons
+                      name="assignment"
+                      size={20}
+                      color={getSeverityColor(report.severity)}
+                    />
                   </View>
-                  <ThemedText style={styles.quickActionLabel}>{action.label}</ThemedText>
+                  <View style={styles.activityContent}>
+                    <ThemedText style={styles.activityTitle} numberOfLines={2}>
+                      {report.description || report.tps?.name || 'Laporan kondisi TPS'}
+                    </ThemedText>
+                    <ThemedText style={[styles.activityTime, { color: colors.textSecondary }]}>
+                      {formatDate(report.created_at || report.createdAt)}
+                    </ThemedText>
+                  </View>
                 </View>
               </Card>
-            ))}
-          </View>
-        </View>
-
-        {/* Recent Activity */}
-        <View style={styles.sectionContainer}>
-          <ThemedText style={styles.sectionTitle}>Recent Activity</ThemedText>
-          {recentActivities.map((activity, index) => (
-            <Card key={activity.id}>
-              <View style={styles.activityItem}>
-                <View
-                  style={[
-                    styles.activityIcon,
-                    {
-                      backgroundColor:
-                        activity.icon === 'warning' ? colors.danger + '15' : colors.success + '15',
-                    },
-                  ]}
-                >
-                  <MaterialIcons
-                    name={activity.icon}
-                    size={20}
-                    color={activity.icon === 'warning' ? colors.danger : colors.success}
-                  />
-                </View>
-                <View style={styles.activityContent}>
-                  <ThemedText style={styles.activityTitle}>{activity.title}</ThemedText>
-                  <ThemedText style={[styles.activityTime, { color: colors.textSecondary }]}>
-                    {activity.time}
-                  </ThemedText>
-                </View>
+            ))
+          ) : (
+            <Card>
+              <View style={styles.emptyActivity}>
+                <MaterialIcons name="inbox" size={32} color={colors.textSecondary} />
+                <ThemedText style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  Belum ada laporan terbaru.
+                </ThemedText>
               </View>
             </Card>
-          ))}
+          )}
         </View>
       </ScreenLayout>
     </View>
@@ -270,6 +328,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
+  loadingBox: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
   activityItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -294,5 +356,13 @@ const styles = StyleSheet.create({
   },
   activityTime: {
     fontSize: 12,
+  },
+  emptyActivity: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  emptyText: {
+    fontSize: 14,
   },
 });

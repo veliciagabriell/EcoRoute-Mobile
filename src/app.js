@@ -29,7 +29,8 @@ app.use((req, res, next) => {
 });
 
 app.use(rateLimiter);
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ── Swagger Dokumentasi API ──────────────────────────────────
 const swaggerUiOptions = {

@@ -1,10 +1,12 @@
--- Seed TPS locations for ITB Ganesha and Tamansari
+-- Seed TPS locations: 4 lokasi utama EcoRoute Bandung
 INSERT INTO tps_locations (name, latitude, longitude, container_height_cm, area)
 VALUES
-  ('TPS ITB Ganesha', -6.89148, 107.61070, 120, 'Bandung - ITB Ganesha'),
-  ('TPS Tamansari', -6.90035, 107.60657, 140, 'Bandung - Tamansari'),
-  ('TPS Dago', -6.89520, 107.61310, 120, 'Bandung - Dago'),
-  ('TPS Cisitu', -6.88990, 107.61260, 110, 'Bandung - Cisitu'),
-  ('TPS Lebak Siliwangi', -6.89750, 107.60980, 130, 'Bandung - Lebak Siliwangi'),
-  ('TPS Siliwangi', -6.89890, 107.60690, 120, 'Bandung - Siliwangi')
-ON CONFLICT DO NOTHING;
+  ('TPS ITB Ganesha', -6.8914800, 107.6107000, 120, 'Bandung - ITB Ganesha'),
+  ('TPS Sarijadi',    -6.8773000, 107.5965000, 120, 'Bandung - Sarijadi'),
+  ('TPS Dago',        -6.8952000, 107.6131000, 120, 'Bandung - Dago'),
+  ('TPS Tamansari',   -6.9003500, 107.6065700, 140, 'Bandung - Tamansari')
+ON CONFLICT (name) DO UPDATE SET
+  latitude            = EXCLUDED.latitude,
+  longitude           = EXCLUDED.longitude,
+  container_height_cm = EXCLUDED.container_height_cm,
+  area                = EXCLUDED.area;

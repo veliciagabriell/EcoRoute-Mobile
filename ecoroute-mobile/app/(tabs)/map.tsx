@@ -5,7 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -13,30 +13,47 @@ import { get } from '@/utils/api';
 import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
 import { useTpsStore } from '@/stores/tps-store';
 import type { TPSData, TPSStatus } from '@/types/tps';
-import { 
-  useFonts, 
-  Manrope_400Regular, 
-  Manrope_600SemiBold, 
-  Manrope_700Bold 
+import {
+  useFonts,
+  Manrope_400Regular,
+  Manrope_600SemiBold,
+  Manrope_700Bold,
 } from '@expo-google-fonts/manrope';
+
+type SensorReading = {
+  fullness_pct: number;
+  ammonia_ppm: number;
+  temperature_c: number;
+  alert_level: string | null;
+  timestamp: string;
+} | null;
 
 type MapStop = {
   id: string;
   name: string;
   latitude: number;
   longitude: number;
-  status?: TPSStatus;
-  latestReading?: {
-    fullness_pct?: number;
-    alert_level?: TPSStatus;
-    ammonia_ppm?: number;
-    temperature_c?: number;
-    timestamp?: string;
-  };
-  distanceFromPrevKm?: number;
+  latestReading: SensorReading;
 };
 
-type RoutePoint = { latitude: number; longitude: number };
+type FilterKey = 'all' | 'critical' | 'warning' | 'normal';
+
+function computeStatus(reading: SensorReading): { key: string; label: string; color: string; bg: string } {
+  if (!reading) {
+    return { key: 'waiting', label: 'MENUNGGU', color: '#74777F', bg: '#E5EEFF' };
+  }
+  const fullness = reading.fullness_pct ?? 0;
+  const ammonia = reading.ammonia_ppm ?? 0;
+  // Trust backend alert_level if present, otherwise compute
+  const level = reading.alert_level;
+  if (level === 'critical' || fullness >= 80 || ammonia >= 50) {
+    return { key: 'critical', label: 'KRITIS', color: '#BA1A1A', bg: '#FFDAD6' };
+  }
+  if (level === 'warning' || fullness >= 60 || ammonia >= 30) {
+    return { key: 'warning', label: 'WASPADA', color: '#D97706', bg: '#FEF3C7' };
+  }
+  return { key: 'normal', label: 'NORMAL', color: '#2E7D32', bg: '#E8F5E9' };
+}
 
 export default function TPSMapScreen() {
   const setSelectedTPSId = useTpsStore((state) => state.setSelectedTPSId);
@@ -44,185 +61,130 @@ export default function TPSMapScreen() {
   const setNearbyTpsList = useTpsStore((state) => state.setNearbyTpsList);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [routeStops, setRouteStops] = useState<MapStop[]>([]);
-  const [routeLine, setRouteLine] = useState<RoutePoint[]>([]);
-  const [filter, setFilter] = useState<'all' | 'critical' | 'warning' | 'normal'>('all');
+  const [stops, setStops] = useState<MapStop[]>([]);
+  const [filter, setFilter] = useState<FilterKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const fallbackStops = useMemo<MapStop[]>(
-    () => [
-      {
-        id: 'start-itb',
-        name: 'ITB Ganesha (Start)',
-        latitude: -6.89148,
-        longitude: 107.6107,
-        status: 'normal',
-        latestReading: {
-          fullness_pct: 10,
-          alert_level: 'normal',
-        },
-      },
-      {
-        id: 'tps-sarijadi',
-        name: 'TPS Sarijadi',
-        latitude: -6.8929,
-        longitude: 107.6079,
-        status: 'critical',
-        latestReading: {
-          fullness_pct: 92,
-          alert_level: 'critical',
-        },
-      },
-      {
-        id: 'tps-dago',
-        name: 'TPS Dago',
-        latitude: -6.8952,
-        longitude: 107.6131,
-        status: 'warning',
-        latestReading: {
-          fullness_pct: 70,
-          alert_level: 'warning',
-        },
-      },
-      {
-        id: 'tps-tamansari',
-        name: 'TPS Tamansari (End)',
-        latitude: -6.90035,
-        longitude: 107.60657,
-        status: 'normal',
-        latestReading: {
-          fullness_pct: 30,
-          alert_level: 'normal',
-        },
-      },
-    ],
-    []
-  );
-
-  // 1. Load Manrope Fonts
   const [fontsLoaded] = useFonts({
-    'Manrope': Manrope_400Regular,
+    Manrope: Manrope_400Regular,
     'Manrope-SemiBold': Manrope_600SemiBold,
     'Manrope-Bold': Manrope_700Bold,
   });
 
   const manrope = { fontFamily: 'Manrope' };
 
+  // Load TPS from backend (same source as explore.tsx) — refresh every 60s
   useEffect(() => {
     let isActive = true;
 
-    const loadRoute = async () => {
-      setIsLoading(true);
+    const load = async () => {
       try {
-        const [routeData, nearbyData] = await Promise.all([
-          get('/routes/optimal?withMaps=true'),
-          get('/tps/nearby?lat=-6.89148&lng=107.6107&radiusKm=5&limit=12'),
-        ]);
+        const data = await get('/tps');
+        const list: any[] = data?.data || data || [];
 
-        const stops = (nearbyData?.data || [])
-          .map((item: any, index: number): MapStop => ({
-            id: item?.tps?.id || `nearby-${index}`,
-            name: item?.tps?.name || 'TPS',
-            latitude: Number(item?.tps?.latitude),
-            longitude: Number(item?.tps?.longitude),
-            latestReading: item?.latestReading,
-            distanceFromPrevKm: item?.distance_km,
-          }))
-          .filter((stop: MapStop) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
+        const mapped = list
+          .map((item: any): MapStop | null => {
+            const tps = item?.tps ?? item;
+            const reading = item?.latestReading ?? null;
+            const lat = Number(tps?.latitude);
+            const lng = Number(tps?.longitude);
+            if (!tps?.id || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
-        const fallbackRouteStops = (routeData?.stops || [])
-          .map((stop: any, index: number): MapStop => ({
-            id: stop?.id || `stop-${index}`,
-            name: stop?.name || 'TPS',
-            latitude: Number(stop?.latitude),
-            longitude: Number(stop?.longitude),
-            latestReading: stop?.latestReading,
-            distanceFromPrevKm: stop?.distanceFromPrevKm,
-          }))
-          .filter((stop: MapStop) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
-
-        const geometry = routeData?.maps?.geometry?.coordinates || [];
-        const line = geometry.map((coord: [number, number]): RoutePoint => ({
-          latitude: coord[1],
-          longitude: coord[0],
-        }));
+            return {
+              id: String(tps.id),
+              name: String(tps.name ?? 'TPS'),
+              latitude: lat,
+              longitude: lng,
+              latestReading: reading
+                ? {
+                    fullness_pct: Number(reading.fullness_pct ?? reading.fullness ?? 0),
+                    ammonia_ppm: Number(reading.ammonia_ppm ?? reading.ammonia ?? 0),
+                    temperature_c: Number(reading.temperature_c ?? reading.temperature ?? 0),
+                    alert_level: reading.alert_level ?? null,
+                    timestamp: reading.timestamp ?? '',
+                  }
+                : null,
+            };
+          })
+          .filter(Boolean) as MapStop[];
 
         if (isActive) {
-          setRouteStops(stops?.length ? stops : (fallbackRouteStops?.length ? fallbackRouteStops : fallbackStops));
-          setRouteLine(line);
+          setStops(mapped);
+          // Sync to global store for other screens
+          const storeData = mapped.map((s): TPSData => ({
+            id: s.id,
+            name: s.name,
+            fullness: s.latestReading?.fullness_pct ?? 0,
+            ammonia: s.latestReading?.ammonia_ppm ?? 0,
+            temperature: s.latestReading?.temperature_c ?? 0,
+            lastUpdate: s.latestReading?.timestamp ?? '',
+            latitude: s.latitude,
+            longitude: s.longitude,
+          }));
+          upsertTPSList(storeData);
+          setNearbyTpsList(storeData);
         }
       } catch (err) {
-        if (isActive) {
-          setRouteStops(fallbackStops);
-          setRouteLine([]);
-        }
+        console.warn('[Map] Gagal memuat TPS:', err);
       } finally {
         if (isActive) setIsLoading(false);
       }
     };
 
-    loadRoute();
+    setIsLoading(true);
+    load();
+    const interval = setInterval(load, 60_000);
 
     return () => {
       isActive = false;
+      clearInterval(interval);
     };
-  }, [fallbackStops]);
-
-  const visibleStops = useMemo(() => (routeStops.length ? routeStops : fallbackStops), [routeStops, fallbackStops]);
+  }, [upsertTPSList, setNearbyTpsList]);
 
   const mapRegion = useMemo(() => {
-    const points = visibleStops.map((stop) => ({ latitude: stop.latitude, longitude: stop.longitude }));
-    return getRegionForPoints(points, 0.01);
-  }, [visibleStops]);
+    const points = stops.map((s) => ({ latitude: s.latitude, longitude: s.longitude }));
+    return getRegionForPoints(points.length ? points : [{ latitude: -6.8914, longitude: 107.6107 }], 0.04);
+  }, [stops]);
 
-  useEffect(() => {
-    const mapped = visibleStops.map((stop): TPSData => ({
-      id: stop.id,
-      name: stop.name,
-      fullness: Number(stop.latestReading?.fullness_pct ?? 0),
-      ammonia: Number(stop.latestReading?.ammonia_ppm ?? 0),
-      temperature: Number(stop.latestReading?.temperature_c ?? 0),
-      lastUpdate: stop.latestReading?.timestamp ?? '',
-      latitude: stop.latitude,
-      longitude: stop.longitude,
-    }));
-    upsertTPSList(mapped);
-    setNearbyTpsList(mapped);
-  }, [visibleStops, upsertTPSList, setNearbyTpsList]);
+  const filteredStops = useMemo(() => {
+    return stops.filter((stop) => {
+      const status = computeStatus(stop.latestReading);
+      const matchFilter =
+        filter === 'all' ||
+        filter === status.key ||
+        // "normal" chip also shows "waiting" TPS that have no data yet
+        (filter === 'normal' && status.key === 'waiting');
+      const matchSearch = stop.name.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchFilter && matchSearch;
+    });
+  }, [stops, filter, searchQuery]);
+
+  const markers: MapMarkerData[] = useMemo(
+    () =>
+      filteredStops.map((stop) => {
+        const status = computeStatus(stop.latestReading);
+        return {
+          id: stop.id,
+          name: stop.name,
+          latitude: stop.latitude,
+          longitude: stop.longitude,
+          // Map 'waiting' to 'normal' for the marker color (tps-map-view only knows 3 statuses)
+          status: (status.key === 'waiting' ? 'normal' : status.key) as TPSStatus,
+        };
+      }),
+    [filteredStops]
+  );
 
   if (!fontsLoaded) {
     return <ActivityIndicator size="large" style={{ flex: 1 }} color="#002045" />;
   }
 
-  const mapStatus = (stop: MapStop) => {
-    const level = stop?.latestReading?.alert_level || stop?.status || 'normal';
-    if (level === 'critical') return { key: 'critical', label: 'KRITIS', color: '#BA1A1A', bg: '#FFDAD6' };
-    if (level === 'warning') return { key: 'warning', label: 'WASPADA', color: '#D97706', bg: '#FEF3C7' };
-    return { key: 'normal', label: 'NORMAL', color: '#2E7D32', bg: '#E8F5E9' };
-  };
-
-  const filteredStops = visibleStops.filter((stop) => {
-    const status = mapStatus(stop);
-    const matchFilter = filter === 'all' || status.key === filter;
-    const matchSearch = stop?.name?.toLowerCase?.().includes(searchQuery.toLowerCase());
-    return matchFilter && matchSearch;
-  });
-
-  const markers: MapMarkerData[] = filteredStops.map((stop) => ({
-    id: stop.id,
-    name: stop.name,
-    latitude: stop.latitude,
-    longitude: stop.longitude,
-    status: mapStatus(stop).key as TPSStatus,
-  }));
-
   return (
     <View style={styles.container}>
-      {/* OpenStreetMap View */}
+      {/* Full-screen map */}
       <View style={styles.mapContainer}>
         <TpsMapView
           markers={markers}
-          routeLine={routeLine}
           initialRegion={mapRegion}
           onMarkerPress={(markerId) => setSelectedTPSId(markerId)}
         />
@@ -230,19 +192,26 @@ export default function TPSMapScreen() {
         {isLoading && (
           <View style={styles.mapLoadingOverlay}>
             <ActivityIndicator size="large" color="#1A365D" />
-            <ThemedText style={styles.mapLoadingText}>Memuat rute...</ThemedText>
+            <ThemedText style={styles.mapLoadingText}>Memuat data TPS...</ThemedText>
+          </View>
+        )}
+
+        {!isLoading && stops.length === 0 && (
+          <View style={styles.mapLoadingOverlay}>
+            <MaterialIcons name="wifi-off" size={36} color="#74777F" />
+            <ThemedText style={styles.mapLoadingText}>Tidak ada data TPS</ThemedText>
           </View>
         )}
       </View>
 
-      {/* Top Search & Filter Area */}
+      {/* Search + filter chips */}
       <View style={styles.topArea}>
         <View style={styles.searchBar}>
           <MaterialIcons name="search" size={20} color="#C4C6CF" style={styles.searchIcon} />
-          <TextInput 
-            placeholder="Cari TPS..." 
+          <TextInput
+            placeholder="Cari TPS..."
             placeholderTextColor="#74777F"
-            style={[manrope, styles.searchInput]} 
+            style={[manrope, styles.searchInput]}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
@@ -251,9 +220,9 @@ export default function TPSMapScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
           style={styles.filterContainer}
           contentContainerStyle={styles.filterContent}
         >
@@ -264,36 +233,53 @@ export default function TPSMapScreen() {
         </ScrollView>
       </View>
 
-      {/* Floating Action Button (Reports) */}
+      {/* FAB */}
       <TouchableOpacity style={styles.fab}>
         <MaterialIcons name="report-problem" size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Bottom Sheet (Peeking) */}
+      {/* Bottom sheet */}
       <View style={styles.bottomSheet}>
         <View style={styles.dragHandle} />
         <View style={styles.sheetHeader}>
-          <ThemedText style={[manrope, styles.sheetTitle]}>TPS Terdekat</ThemedText>
-          <TouchableOpacity>
-            <ThemedText style={[manrope, styles.viewAll]}>Lihat Semua</ThemedText>
-          </TouchableOpacity>
+          <ThemedText style={[manrope, styles.sheetTitle]}>
+            Daftar TPS {stops.length > 0 ? `(${stops.length})` : ''}
+          </ThemedText>
+          <View style={styles.liveIndicator}>
+            <View style={styles.liveDot} />
+            <ThemedText style={[manrope, styles.liveText]}>Live</ThemedText>
+          </View>
         </View>
 
-        <ScrollView style={styles.sheetList}>
+        <ScrollView style={styles.sheetList} showsVerticalScrollIndicator={false}>
+          {filteredStops.length === 0 && !isLoading && (
+            <ThemedText style={[manrope, styles.emptyText]}>
+              {stops.length === 0
+                ? 'Menunggu data dari server...'
+                : 'Tidak ada TPS yang sesuai filter.'}
+            </ThemedText>
+          )}
           {filteredStops.map((stop, index) => {
-            const status = mapStatus(stop);
-            const distance = stop?.distanceFromPrevKm;
-            const fullness = stop?.latestReading?.fullness_pct;
+            const status = computeStatus(stop.latestReading);
+            const fullness = stop.latestReading?.fullness_pct;
+            const hasData = stop.latestReading !== null;
             return (
               <TPSItem
                 key={stop.id || `${stop.name}-${index}`}
                 name={stop.name}
-                dist={Number.isFinite(distance) ? `${distance.toFixed(1)} km` : '-'}
-                percent={Number.isFinite(fullness) ? `${Number(fullness).toFixed(0)}% Penuh` : '-'}
+                percent={hasData && Number.isFinite(fullness) ? `${Number(fullness).toFixed(0)}% Penuh` : 'Menunggu data'}
                 status={status.label}
                 statusColor={status.color}
                 bgIcon={status.bg}
-                icon={status.label === 'KRITIS' ? 'delete-outline' : status.label === 'WASPADA' ? 'warning' : 'check-circle'}
+                icon={
+                  status.key === 'critical'
+                    ? 'delete-outline'
+                    : status.key === 'warning'
+                    ? 'warning'
+                    : status.key === 'waiting'
+                    ? 'access-time'
+                    : 'check-circle'
+                }
                 onPress={() => setSelectedTPSId(stop.id)}
               />
             );
@@ -304,9 +290,7 @@ export default function TPSMapScreen() {
   );
 }
 
-// --- Sub Components ---
-
-function FilterChip({ label, color, active, onPress }: any) {
+function FilterChip({ label, color, active, onPress }: { label: string; color: string; active: boolean; onPress: () => void }) {
   return (
     <TouchableOpacity style={[styles.chip, active && styles.chipActive]} onPress={onPress}>
       <View style={[styles.chipDot, { backgroundColor: color }]} />
@@ -315,25 +299,36 @@ function FilterChip({ label, color, active, onPress }: any) {
   );
 }
 
-function TPSItem({ name, dist, percent, status, statusColor, bgIcon, icon, onPress }: any) {
-  const manrope = { fontFamily: 'Manrope' };
+function TPSItem({
+  name,
+  percent,
+  status,
+  statusColor,
+  bgIcon,
+  icon,
+  onPress,
+}: {
+  name: string;
+  percent: string;
+  status: string;
+  statusColor: string;
+  bgIcon: string;
+  icon: string;
+  onPress: () => void;
+}) {
   return (
     <TouchableOpacity style={styles.tpsItem} onPress={onPress}>
       <View style={[styles.tpsIconContainer, { backgroundColor: bgIcon }]}>
-        <MaterialIcons name={icon || "delete-outline"} size={20} color={statusColor} />
+        <MaterialIcons name={icon as any} size={20} color={statusColor} />
       </View>
       <View style={styles.tpsInfo}>
-        <ThemedText style={[manrope, styles.tpsName]}>{name}</ThemedText>
-        <View style={styles.tpsRow}>
-          <MaterialIcons name="location-on" size={14} color="#74777F" />
-          <ThemedText style={[manrope, styles.tpsDist]}>{dist}</ThemedText>
-        </View>
+        <ThemedText style={styles.tpsName}>{name}</ThemedText>
+        <ThemedText style={styles.tpsPercent}>{percent}</ThemedText>
       </View>
       <View style={styles.tpsStatusArea}>
         <View style={[styles.statusBadge, { backgroundColor: bgIcon }]}>
-          <ThemedText style={[manrope, styles.statusText, { color: statusColor }]}>{status}</ThemedText>
+          <ThemedText style={[styles.statusText, { color: statusColor }]}>{status}</ThemedText>
         </View>
-        <ThemedText style={[manrope, styles.tpsPercent]}>{percent}</ThemedText>
       </View>
     </TouchableOpacity>
   );
@@ -346,10 +341,7 @@ const styles = StyleSheet.create({
   },
   mapContainer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#E5EEFF', // Placeholder warna peta
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#E5EEFF',
   },
   mapLoadingOverlay: {
     position: 'absolute',
@@ -359,12 +351,14 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    gap: 8,
   },
   mapLoadingText: {
     marginTop: 8,
     color: '#1A365D',
-    fontWeight: '600',
+    fontFamily: 'Manrope-SemiBold',
+    fontSize: 14,
   },
   topArea: {
     position: 'absolute',
@@ -394,6 +388,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#0D1C2E',
+    fontFamily: 'Manrope',
   },
   tuneButton: {
     padding: 4,
@@ -436,29 +431,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#0D1C2E',
   },
-  markerContainer: {
-    position: 'absolute',
-  },
-  markerPin: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    transform: [{ rotate: '45deg' }],
-    shadowColor: '#1A365D',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.24,
-    shadowRadius: 16,
-    elevation: 5,
-  },
-  markerText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 14,
-    transform: [{ rotate: '-45deg' }],
-  },
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 260, // Di atas bottom sheet peeking
+    bottom: 260,
     width: 56,
     height: 56,
     borderRadius: 16,
@@ -497,29 +473,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 16,
+    paddingBottom: 4,
   },
   sheetTitle: {
     fontSize: 16,
-    fontWeight: '700',
+    fontFamily: 'Manrope-Bold',
     color: '#002045',
   },
-  viewAll: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0061A5',
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4BB278',
+  },
+  liveText: {
+    fontSize: 12,
+    fontFamily: 'Manrope-SemiBold',
+    color: '#4BB278',
   },
   sheetList: {
-    marginTop: 16,
     paddingHorizontal: 20,
+    marginTop: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#74777F',
+    textAlign: 'center',
+    marginTop: 16,
+    fontFamily: 'Manrope',
   },
   tpsItem: {
     flexDirection: 'row',
     backgroundColor: '#F8F9FF',
     borderRadius: 12,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: 'rgba(196, 198, 207, 0.2)',
+    alignItems: 'center',
   },
   tpsIconContainer: {
     width: 40,
@@ -534,18 +530,14 @@ const styles = StyleSheet.create({
   },
   tpsName: {
     fontSize: 15,
-    fontWeight: '700',
+    fontFamily: 'Manrope-Bold',
     color: '#0D1C2E',
   },
-  tpsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  tpsDist: {
+  tpsPercent: {
     fontSize: 13,
+    fontFamily: 'Manrope',
     color: '#74777F',
-    marginLeft: 4,
+    marginTop: 2,
   },
   tpsStatusArea: {
     alignItems: 'flex-end',
@@ -557,13 +549,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
-    fontWeight: '700',
+    fontFamily: 'Manrope-Bold',
     letterSpacing: 0.5,
-  },
-  tpsPercent: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0D1C2E',
-    marginTop: 4,
   },
 });

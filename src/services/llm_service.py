@@ -15,20 +15,28 @@ logger = logging.getLogger(__name__)
 class LlmService:
     def __init__(self) -> None:
         self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
-        self.model = os.getenv("OLLAMA_MODEL", "tinyllama")
+        self.primary_model = os.getenv("OLLAMA_MODEL", "llama3:latest")
+        self.fallback_model = os.getenv("OLLAMA_MODEL_FALLBACK", "qwen2.5:3b")
         self.max_tokens = int(os.getenv("ECOBOT_MAX_TOKENS", "256"))
         self.temperature = float(os.getenv("ECOBOT_TEMPERATURE", "0.2"))
 
         logger.info("[EcoBot] Inisialisasi LlmService (Ollama)")
-        logger.info(f"  ollama_url  = {self.ollama_url}")
-        logger.info(f"  model       = {self.model}")
-        logger.info(f"  max_tokens  = {self.max_tokens}")
-        logger.info(f"  temperature = {self.temperature}")
+        logger.info(f"  ollama_url     = {self.ollama_url}")
+        logger.info(f"  primary_model  = {self.primary_model}")
+        logger.info(f"  fallback_model = {self.fallback_model}")
+        logger.info(f"  max_tokens     = {self.max_tokens}")
+        logger.info(f"  temperature    = {self.temperature}")
 
     def _build_messages(self, messages: List[dict], system_prompt: str) -> List[dict]:
         return [{"role": "system", "content": system_prompt}, *[{"role": m.role, "content": m.content} for m in messages]]
 
-    def _post(self, payload: dict, stream: bool):
+    def _open(self, model: str, messages: List[dict], system_prompt: str, stream: bool):
+        payload = {
+            "model": model,
+            "messages": self._build_messages(messages, system_prompt),
+            "stream": stream,
+            "options": {"temperature": self.temperature, "num_predict": self.max_tokens},
+        }
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             f"{self.ollama_url}/api/chat",
@@ -39,52 +47,77 @@ class LlmService:
         return urllib.request.urlopen(req, timeout=300)
 
     def generate(self, messages: List[dict], system_prompt: str = SYSTEM_PROMPT):
-        try:
-            payload = {
-                "model": self.model,
-                "messages": self._build_messages(messages, system_prompt),
-                "stream": False,
-                "options": {"temperature": self.temperature, "num_predict": self.max_tokens},
-            }
-            with self._post(payload, stream=False) as resp:
-                result = json.loads(resp.read())
-                reply = result["message"]["content"]
-                logger.info(f"[EcoBot] Respons dihasilkan ({len(reply)} karakter)")
-                return {"reply": reply, "mode": "llm"}
-        except urllib.error.URLError as e:
-            logger.error(f"[EcoBot] Ollama tidak tersedia: {e}")
-            return JSONResponse(status_code=503, content={"error": "Ollama tidak tersedia. Jalankan Ollama terlebih dahulu.", "mode": "error"})
-        except Exception as e:
-            logger.error(f"[EcoBot] Error saat generate: {e}")
-            return JSONResponse(status_code=500, content={"error": str(e), "mode": "error"})
+        for model in [self.primary_model, self.fallback_model]:
+            logger.info(f"[EcoBot] Mencoba model (non-stream): {model}")
+            try:
+                with self._open(model, messages, system_prompt, stream=False) as resp:
+                    result = json.loads(resp.read())
+                    if "error" in result:
+                        logger.warning(f"[EcoBot] Model {model} menolak: {result['error']}")
+                        continue
+                    reply = result["message"]["content"]
+                    logger.info(f"[EcoBot] {model} OK ({len(reply)} karakter)")
+                    return {"reply": reply, "mode": "llm", "model": model}
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="replace")
+                logger.warning(f"[EcoBot] Model {model} HTTP {e.code}: {body[:200]}")
+            except urllib.error.URLError as e:
+                logger.error(f"[EcoBot] Ollama tidak tersedia: {e}")
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": "Ollama tidak tersedia. Jalankan Ollama terlebih dahulu.", "mode": "error"},
+                )
+            except Exception as e:
+                logger.warning(f"[EcoBot] Model {model} error: {e}")
+
+        logger.error("[EcoBot] Semua model gagal")
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Tidak ada model AI yang tersedia saat ini.", "mode": "error"},
+        )
 
     def generate_stream(self, messages: List[dict], system_prompt: str = SYSTEM_PROMPT) -> Iterable[str]:
-        try:
-            payload = {
-                "model": self.model,
-                "messages": self._build_messages(messages, system_prompt),
-                "stream": True,
-                "options": {"temperature": self.temperature, "num_predict": self.max_tokens},
-            }
-            with self._post(payload, stream=True) as resp:
-                for line in resp:
-                    if not line.strip():
-                        continue
-                    chunk = json.loads(line)
-                    token = chunk.get("message", {}).get("content", "")
-                    if token:
-                        yield self._sse(token)
-                    if chunk.get("done"):
-                        break
-            yield self._sse_done()
-        except urllib.error.URLError as e:
-            logger.error(f"[EcoBot] Ollama tidak tersedia: {e}")
-            yield self._sse("Maaf, Ollama service tidak tersedia. Pastikan Ollama sudah berjalan.")
-            yield self._sse_done()
-        except Exception as e:
-            logger.error(f"[EcoBot] Error saat generate_stream: {e}")
-            yield self._sse(f"Maaf, terjadi kesalahan: {str(e)}")
-            yield self._sse_done()
+        for model in [self.primary_model, self.fallback_model]:
+            logger.info(f"[EcoBot] Mencoba model (stream): {model}")
+            try:
+                with self._open(model, messages, system_prompt, stream=True) as resp:
+                    model_ok = True
+                    first_chunk = True
+                    for line in resp:
+                        if not line.strip():
+                            continue
+                        chunk = json.loads(line)
+                        # Check the first chunk for model-not-found errors
+                        if first_chunk:
+                            first_chunk = False
+                            if "error" in chunk:
+                                logger.warning(f"[EcoBot] Model {model} menolak: {chunk['error']}")
+                                model_ok = False
+                                break
+                        token = chunk.get("message", {}).get("content", "")
+                        if token:
+                            yield self._sse(token)
+                        if chunk.get("done"):
+                            break
+
+                    if model_ok:
+                        yield self._sse_done()
+                        return
+                    # model_ok is False — try next model
+            except urllib.error.HTTPError as e:
+                body = e.read().decode("utf-8", errors="replace")
+                logger.warning(f"[EcoBot] Model {model} HTTP {e.code}: {body[:200]}")
+            except urllib.error.URLError as e:
+                logger.error(f"[EcoBot] Ollama tidak tersedia: {e}")
+                yield self._sse("Maaf, Ollama service tidak tersedia. Pastikan Ollama sudah berjalan.")
+                yield self._sse_done()
+                return
+            except Exception as e:
+                logger.warning(f"[EcoBot] Model {model} error: {e}")
+
+        logger.error("[EcoBot] Semua model gagal (stream)")
+        yield self._sse("Maaf, tidak ada model AI yang tersedia saat ini.")
+        yield self._sse_done()
 
     def _sse(self, text: str) -> str:
         return f"data: {json.dumps({'token': text}, ensure_ascii=False)}\n\n"

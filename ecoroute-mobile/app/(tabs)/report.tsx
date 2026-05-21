@@ -64,10 +64,22 @@ export default function ReportScreen() {
     const load = async () => {
       try {
         const data = await get('/tps');
-        const list = data?.data || data || [];
+        const raw: any[] = data?.data || data || [];
+        const normalized = (Array.isArray(raw) ? raw : [])
+          .map((item: any) => {
+            const tps = item?.tps ?? item;
+            return {
+              id: tps?.id != null ? String(tps.id) : null,
+              name: tps?.name ? String(tps.name) : null,
+              latitude: tps?.latitude != null ? Number(tps.latitude) : null,
+              longitude: tps?.longitude != null ? Number(tps.longitude) : null,
+              area: tps?.area ? String(tps.area) : '',
+            };
+          })
+          .filter((t: any) => t.id && t.name);
         if (active) {
-          setTpsList(list);
-          setSelectedTps(list?.[0]?.tps || list?.[0] || null);
+          setTpsList(normalized);
+          if (normalized.length > 0) setSelectedTps(normalized[0]);
         }
       } catch (err) {
         console.warn('Failed to fetch TPS list', err);
@@ -288,22 +300,32 @@ export default function ReportScreen() {
           <View style={styles.modalCard}>
             <ThemedText style={styles.modalTitle}>Pilih TPS</ThemedText>
             <ScrollView style={{ maxHeight: 280 }}>
-              {tpsList.map((item: any, index: number) => {
-                const tps = item.tps || item;
-                return (
+              {tpsList.length === 0 ? (
+                <ThemedText style={{ color: '#6B7280', textAlign: 'center', padding: 16 }}>
+                  Memuat daftar TPS...
+                </ThemedText>
+              ) : (
+                tpsList.map((tps: any, index: number) => (
                   <TouchableOpacity
                     key={tps.id || index}
-                    style={styles.modalItem}
+                    style={[
+                      styles.modalItem,
+                      selectedTps?.id === tps.id && { backgroundColor: '#EFF4FF' },
+                    ]}
                     onPress={() => {
                       setSelectedTps(tps);
                       setShowTpsPicker(false);
                     }}
                   >
-                    <ThemedText>{tps.name}</ThemedText>
-                    <ThemedText style={{ color: '#6B7280', fontSize: 12 }}>{tps.area}</ThemedText>
+                    <ThemedText style={{ fontWeight: selectedTps?.id === tps.id ? '700' : '400' }}>
+                      {tps.name}
+                    </ThemedText>
+                    {tps.area ? (
+                      <ThemedText style={{ color: '#6B7280', fontSize: 12 }}>{tps.area}</ThemedText>
+                    ) : null}
                   </TouchableOpacity>
-                );
-              })}
+                ))
+              )}
             </ScrollView>
             <TouchableOpacity style={styles.modalClose} onPress={() => setShowTpsPicker(false)}>
               <ThemedText style={{ color: '#0061A5', fontWeight: '600' }}>Tutup</ThemedText>

@@ -14,7 +14,9 @@ export default function TabLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState(user?.role === 'admin' ? 'home' : 'profile');
+  const [activeTab, setActiveTab] = useState(
+    (user?.role === 'admin' || user?.role === 'petugas') ? 'home' : 'profile'
+  );
 
   // Detect current route and update active tab
   const updateActiveTab = useCallback(() => {
@@ -38,17 +40,12 @@ export default function TabLayout() {
   // Define tabs based on user role
   const tabs: TabItem[] = [];
   
-  if (user?.role === 'admin') {
+  if (user?.role === 'admin' || user?.role === 'petugas') {
     tabs.push({ id: 'home', label: 'Dashboard', icon: 'dashboard' });
   } else {
     tabs.push({ id: 'ecobot', label: 'EcoBot', icon: 'chat' });
   }
-  
-  // Add sensors tab for officers (petugas)
-  if (user?.role === 'petugas') {
-    tabs.push({ id: 'sensors', label: 'Sensor', icon: 'sensors' });
-  }
-  
+
   tabs.push(
     { id: 'tps', label: 'TPS', icon: 'location-on' },
     { id: 'report', label: 'Report', icon: 'info' },
@@ -95,14 +92,14 @@ export default function TabLayout() {
             name="index"
             options={{
               title: 'Dashboard',
-              href: user?.role === 'admin' ? '/(tabs)' : null,
+              href: (user?.role === 'admin' || user?.role === 'petugas') ? '/(tabs)' : null,
             }}
           />
           <Tabs.Screen
             name="ecobot"
             options={{
               title: 'EcoBot',
-              href: user?.role !== 'admin' ? '/(tabs)/ecobot' : null,
+              href: user?.role === 'umum' ? '/(tabs)/ecobot' : null,
             }}
           />
           <Tabs.Screen
@@ -115,7 +112,7 @@ export default function TabLayout() {
             name="sensors"
             options={{
               title: 'Monitor Sensor',
-              href: user?.role === 'petugas' ? '/(tabs)/sensors' : null,
+              href: null,
             }}
           />
           <Tabs.Screen

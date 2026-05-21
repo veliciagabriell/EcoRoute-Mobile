@@ -130,7 +130,7 @@ export default function TPSDetailScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Simple TPS list fetched from backend */}
+        {/* Simple TPS list fetched from backend
         {tpsList.length > 0 && (
           <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
             {tpsList.map((item) => (
@@ -146,7 +146,7 @@ export default function TPSDetailScreen() {
               </TouchableOpacity>
             ))}
           </View>
-        )}
+        )} */}
         <View style={styles.statusBanner}>
           <View style={styles.statusIconBox}>
             <MaterialIcons name="warning" size={16} color="#FFFFFF" />
@@ -331,10 +331,10 @@ export default function TPSDetailScreen() {
       <View style={styles.bottomActionArea}>
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={() => router.push('/(tabs)/route')}
+          onPress={() => router.push('/(tabs)/map')}
         >
           <MaterialCommunityIcons name="routes" size={20} color="#FFFFFF" style={{marginRight: 8}} />
-          <ThemedText style={styles.actionButtonText}>Lihat Rute</ThemedText>
+          <ThemedText style={styles.actionButtonText}>Mulai Navigasi</ThemedText>
         </TouchableOpacity>
       </View>
     </View>

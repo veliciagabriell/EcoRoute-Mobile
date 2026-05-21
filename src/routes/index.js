@@ -43,8 +43,8 @@ router.get('/routes/optimal', authRequired, permit('admin','petugas'), routesCon
 
 // Reports
 router.post('/reports', authRequired, reportsController.createReport);
-router.get('/reports', authRequired, permit('admin'), reportsController.listReports);
-router.patch('/reports/:id', authRequired, permit('admin'), reportsController.updateReport);
+router.get('/reports', authRequired, permit('admin', 'petugas'), reportsController.listReports);
+router.patch('/reports/:id', authRequired, permit('admin', 'petugas'), reportsController.updateReport);
 
 // Analytics
 router.get('/analytics/trends', authRequired, permit('admin'), analyticsController.trends);

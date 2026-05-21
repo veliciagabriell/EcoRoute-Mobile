@@ -41,5 +41,6 @@ async def health():
         "status": "ok",
         "engine": "ollama",
         "ollama_url": os.getenv("OLLAMA_URL", "http://localhost:11434"),
-        "model": os.getenv("OLLAMA_MODEL", "tinyllama"),
+        "primary_model": os.getenv("OLLAMA_MODEL", "llama3:latest"),
+        "fallback_model": os.getenv("OLLAMA_MODEL_FALLBACK", "qwen2.5:3b"),
     }
