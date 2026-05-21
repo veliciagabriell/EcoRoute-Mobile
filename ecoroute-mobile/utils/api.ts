@@ -4,13 +4,14 @@ import { Platform } from 'react-native';
 const configuredUrl = (Constants.expoConfig as any)?.extra?.API_URL as string | undefined;
 const hostUri = (Constants.expoConfig as any)?.hostUri || (Constants as any)?.manifest?.hostUri;
 const inferredHost = typeof hostUri === 'string' ? hostUri.split(':')[0] : null;
-const API_URL =
-  configuredUrl ||
+export const API_URL = (
+  configuredUrl?.trim() ||
   (Platform.OS === 'web'
     ? 'http://localhost:3000/api'
     : inferredHost
       ? `http://${inferredHost}:3000/api`
-      : 'http://10.0.2.2:3000/api');
+      : 'http://10.0.2.2:3000/api')
+).replace(/\/$/, '');
 
 console.log('[API] Using API_URL:', API_URL);
 

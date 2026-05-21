@@ -2,8 +2,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from services.llm_service import LlmService
-from services.ecobot_prompt import SYSTEM_PROMPT
+try:
+    from ..services.llm_service import LlmService
+    from ..services.ecobot_prompt import SYSTEM_PROMPT
+except ImportError:
+    from services.llm_service import LlmService
+    from services.ecobot_prompt import SYSTEM_PROMPT
 
 router = APIRouter()
 llm = LlmService()

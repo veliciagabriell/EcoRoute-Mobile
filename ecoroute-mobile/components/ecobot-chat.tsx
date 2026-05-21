@@ -16,7 +16,7 @@ const initialBotMessage: ChatMessageData = {
   id: 'welcome',
   role: 'assistant',
   content:
-    'Halo! Aku EcoBot 🌿 Tanyakan apa saja tentang EcoRoute, TPS, IoT monitoring, atau pengelolaan sampah.',
+    'Halo! Aku EcoBot. Tanyakan apa saja tentang EcoRoute, TPS, IoT monitoring, atau pengelolaan sampah.',
 };
 
 export function EcoBotChat() {
@@ -27,7 +27,6 @@ export function EcoBotChat() {
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-  const activeBotIdRef = useRef<string | null>(null);
 
   const canSend = input.trim().length > 0 && !isStreaming;
 
@@ -54,11 +53,11 @@ export function EcoBotChat() {
     if (!canSend) return;
 
     const content = input.trim();
-    const botId = `bot-${Date.now()}`;
-    activeBotIdRef.current = botId;
+    const timestamp = Date.now();
+    const botId = `bot-${timestamp}`;
 
     const userMessage: ChatMessageData = {
-      id: `user-${Date.now()}`,
+      id: `user-${timestamp}`,
       role: 'user',
       content,
     };
@@ -69,22 +68,21 @@ export function EcoBotChat() {
       content: '',
     };
 
-    // Tambahkan pesan user + placeholder bot kosong
     setMessages((prev) => [...prev, userMessage, botMessage]);
     setInput('');
     setError(null);
     setIsStreaming(true);
-    setIsTyping(true);  // tampilkan "EcoBot sedang mengetik..."
+    setIsTyping(true);
 
     const messagesToSend = [
-      ...formattedMessages.filter(m => m.content !== ''), // buang placeholder kosong
+      ...formattedMessages.filter((message) => message.content !== ''),
       { role: userMessage.role, content: userMessage.content },
     ];
 
     unsubscribeRef.current?.();
     unsubscribeRef.current = streamChat(messagesToSend, {
       onToken: (token) => {
-        setIsTyping(false); // sembunyikan "mengetik" begitu token pertama masuk
+        setIsTyping(false);
         setMessages((prev) => {
           const next = [...prev];
           const index = next.findIndex((item) => item.id === botId);
@@ -103,7 +101,6 @@ export function EcoBotChat() {
         console.error('[EcoBotChat] Stream error:', message);
         setIsTyping(false);
 
-        // Jika error adalah masalah konfigurasi, tampilkan langsung tanpa fallback
         if (message.includes('belum terkonfigurasi') || message.includes('belum dikonfigurasi')) {
           setError(message);
           setMessages((prev) => prev.filter((item) => item.id !== botId));
@@ -111,7 +108,6 @@ export function EcoBotChat() {
           return;
         }
 
-        // Coba fallback ke non-streaming
         console.log('[EcoBotChat] Mencoba fallback ke sendChat...');
         setError('Koneksi streaming gagal, mencoba ulang...');
 
@@ -148,14 +144,10 @@ export function EcoBotChat() {
         contentContainerStyle={styles.messagesContainer}
         keyboardShouldPersistTaps="handled"
       >
-        {messages.map((message) => (
-          // Sembunyikan bubble bot kosong (placeholder saat loading pertama)
-          message.content.length > 0 ? (
-            <ChatMessage key={message.id} message={message} />
-          ) : null
-        ))}
+        {messages.map((message) =>
+          message.content.length > 0 ? <ChatMessage key={message.id} message={message} /> : null
+        )}
 
-        {/* Typing indicator — muncul saat menunggu token pertama */}
         {isTyping && (
           <View style={styles.typingRow}>
             <ActivityIndicator size="small" color="#2E7D32" />
@@ -164,7 +156,6 @@ export function EcoBotChat() {
         )}
       </ScrollView>
 
-      {/* Error banner */}
       {error && (
         <TouchableOpacity style={styles.errorBox} onPress={handleDismissError} activeOpacity={0.8}>
           <MaterialIcons name="error-outline" size={16} color="#93000A" style={{ marginRight: 6 }} />
@@ -173,7 +164,6 @@ export function EcoBotChat() {
         </TouchableOpacity>
       )}
 
-      {/* Input row */}
       <View style={styles.inputRow}>
         <TextInput
           style={styles.input}

@@ -14,7 +14,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from routes.chat import router as chat_router  # noqa: E402
+try:
+    from .routes.chat import router as chat_router  # noqa: E402
+except ImportError:
+    from routes.chat import router as chat_router  # noqa: E402
 
 app = FastAPI(title="EcoBot API", version="1.0.0")
 

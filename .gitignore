@@ -1,0 +1,6 @@
+node_modules/
+.npm-cache/
+node_modules_broken/
+ecoroute-mobile/node_modules_broken/
+__pycache__/
+*.pyc

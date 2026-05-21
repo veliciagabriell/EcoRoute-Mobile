@@ -7,7 +7,10 @@ from typing import Iterable, List
 
 from fastapi.responses import JSONResponse
 
-from services.ecobot_prompt import SYSTEM_PROMPT
+try:
+    from .ecobot_prompt import SYSTEM_PROMPT
+except ImportError:
+    from services.ecobot_prompt import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
