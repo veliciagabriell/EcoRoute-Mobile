@@ -7,10 +7,10 @@ const inferredHost = typeof hostUri === 'string' ? hostUri.split(':')[0] : null;
 export const API_URL = (
   configuredUrl?.trim() ||
   (Platform.OS === 'web'
-    ? 'http://localhost:3000/api'
+    ? 'http://localhost:5000/api'
     : inferredHost
-      ? `http://${inferredHost}:3000/api`
-      : 'http://10.0.2.2:3000/api')
+      ? `http://${inferredHost}:5000/api`
+      : 'http://10.0.2.2:5000/api')
 ).replace(/\/$/, '');
 
 console.log('[API] Using API_URL:', API_URL);

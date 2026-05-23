@@ -21,6 +21,19 @@ type LoginResponse = {
   user: AuthUser;
 };
 
+type WebAuthPayload = {
+  accessToken?: string;
+  refreshToken?: string;
+  user?: AuthUser;
+};
+
+type ApiResponse<T> = {
+  data?: T;
+  error?: string;
+  message?: string;
+  success?: boolean;
+};
+
 const STORAGE_KEY = 'ecoroute.session.v1';
 
 export async function registerUser(payload: {
@@ -38,7 +51,7 @@ export async function registerUser(payload: {
 
 export async function loginUser(payload: { email: string; password: string }) {
   try {
-    const data = (await post('/auth/login', payload)) as LoginResponse;
+    const data = normalizeAuthResponse(await post('/auth/login', payload));
     await saveSession(data);
     return data;
   } catch (err) {
@@ -48,10 +61,13 @@ export async function loginUser(payload: { email: string; password: string }) {
 
 export async function refreshAccessToken(refreshToken: string) {
   try {
-    const data = (await post('/auth/refresh', { refresh_token: refreshToken })) as {
-      access_token: string;
-    };
-    return data.access_token;
+    const response = (await post('/auth/refresh', { refreshToken })) as
+      | ApiResponse<{ accessToken?: string; access_token?: string }>
+      | { accessToken?: string; access_token?: string };
+    const payload = 'data' in response && response.data ? response.data : response;
+    const accessToken = payload.accessToken || payload.access_token;
+    if (!accessToken) throw new Error('Response token tidak valid');
+    return accessToken;
   } catch (err) {
     throw new Error(getAuthErrorMessage(err));
   }
@@ -59,10 +75,30 @@ export async function refreshAccessToken(refreshToken: string) {
 
 export async function fetchMe() {
   try {
-    return (await get('/auth/me')) as AuthUser;
+    const response = (await get('/users/me')) as ApiResponse<{ user?: AuthUser }> | AuthUser;
+    if ('data' in response && response.data?.user) return response.data.user;
+    return response as AuthUser;
   } catch (err) {
     throw new Error(getAuthErrorMessage(err));
   }
+}
+
+function normalizeAuthResponse(response: unknown): LoginResponse {
+  const apiResponse = response as ApiResponse<WebAuthPayload> & Partial<LoginResponse> & Partial<WebAuthPayload>;
+  const payload = apiResponse.data || apiResponse;
+  const accessToken = payload.accessToken || apiResponse.access_token;
+  const refreshToken = payload.refreshToken || apiResponse.refresh_token;
+  const user = payload.user || apiResponse.user;
+
+  if (!accessToken || !refreshToken || !user) {
+    throw new Error('Response tidak valid');
+  }
+
+  return {
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    user,
+  };
 }
 
 export async function saveSession(data: LoginResponse) {
