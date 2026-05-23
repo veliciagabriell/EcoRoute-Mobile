@@ -37,15 +37,23 @@ async function list(req, res, next) {
   try {
     const { area } = req.query;
     const all = await TPSLocations.getAll(area);
-    // augment with latest from redis or db
-    const result = [];
-    for (const t of all) {
-      const cache = await redis.get(`latest_reading:${t.id}`);
-      let latest = null;
-      if (cache) latest = JSON.parse(cache);
-      else latest = await sensorModel.getLatestByTps(t.id);
-      result.push({ tps: t, latestReading: latest });
-    }
+    // Fetch all latest readings in parallel — N round-trips → 1 round-trip equivalent.
+    // Falls back to DB when Redis is empty; both wrapped so a single failure
+    // can't reject the whole request.
+    const result = await Promise.all(
+      all.map(async (t) => {
+        let latest = null;
+        try {
+          const cache = await redis.get(`latest_reading:${t.id}`);
+          if (cache) latest = JSON.parse(cache);
+        } catch { /* redis hiccup — fall through to DB */ }
+        if (!latest) {
+          try { latest = await sensorModel.getLatestByTps(t.id); }
+          catch { latest = null; }
+        }
+        return { tps: t, latestReading: latest };
+      }),
+    );
     res.json({ data: result, count: result.length });
   } catch (err) {
     next(err);
@@ -286,14 +294,21 @@ async function getNearby(req, res, next) {
     }
 
     const tpsList = await TPSLocations.getNearby({ lat, lng, radiusKm, limit, area });
-    const result = [];
-    for (const t of tpsList) {
-      const cache = await redis.get(`latest_reading:${t.id}`);
-      let latest = null;
-      if (cache) latest = JSON.parse(cache);
-      else latest = await sensorModel.getLatestByTps(t.id);
-      result.push({ tps: t, latestReading: latest, distance_km: t.distance_km });
-    }
+    // Parallel reading lookups — see comments in `list` above.
+    const result = await Promise.all(
+      tpsList.map(async (t) => {
+        let latest = null;
+        try {
+          const cache = await redis.get(`latest_reading:${t.id}`);
+          if (cache) latest = JSON.parse(cache);
+        } catch { /* redis hiccup */ }
+        if (!latest) {
+          try { latest = await sensorModel.getLatestByTps(t.id); }
+          catch { latest = null; }
+        }
+        return { tps: t, latestReading: latest, distance_km: t.distance_km };
+      }),
+    );
 
     const priority = (reading) => {
       const level = reading?.alert_level || 'normal';

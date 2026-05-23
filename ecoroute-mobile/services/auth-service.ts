@@ -95,7 +95,7 @@ export async function clearSession() {
 function getAuthErrorMessage(err: unknown) {
   const raw = err instanceof Error ? err.message : '';
   const normalized = raw.trim().toLowerCase();
-  if (!normalized) return 'Terjadi kesalahan. Silakan coba lagi.';
+  if (!normalized) return 'Terjadi kesalahan tidak diketahui. Cek log Metro untuk detail.';
 
   if (normalized.includes('email sudah terdaftar')) {
     return 'Email sudah terdaftar. Gunakan email lain atau login.';
@@ -106,11 +106,15 @@ function getAuthErrorMessage(err: unknown) {
   if (normalized.includes('unauthorized')) {
     return 'Sesi berakhir. Silakan login kembali.';
   }
-  if (normalized.includes('timeout')) {
-    return 'Koneksi timeout. Coba lagi nanti.';
+  if (normalized.includes('timeout') || normalized.includes('aborted')) {
+    return 'Koneksi timeout — server tidak merespon. Cek IP server di .env (EXPO_PUBLIC_API_URL) dan pastikan HP & PC di Wi-Fi yang sama.';
   }
-  if (normalized.includes('failed to fetch')) {
-    return 'Tidak bisa terhubung ke server. Periksa koneksi.';
+  if (
+    normalized.includes('failed to fetch') ||
+    normalized.includes('network request failed') ||
+    normalized.includes('network error')
+  ) {
+    return 'Network error — tidak bisa konek ke server. Pastikan backend jalan, IP server benar di .env, dan firewall mengizinkan port 3000.';
   }
 
   try {
@@ -121,5 +125,6 @@ function getAuthErrorMessage(err: unknown) {
     // ignore parse errors
   }
 
-  return 'Terjadi kesalahan. Silakan coba lagi.';
+  // Surface the raw error so problems aren't hidden behind a generic message.
+  return raw.length > 200 ? `${raw.slice(0, 200)}…` : raw;
 }

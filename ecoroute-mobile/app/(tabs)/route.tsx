@@ -3,25 +3,28 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } fro
 import { Header } from '@/components/header';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router'; // 1. Import useRouter
+import { useRouter } from 'expo-router';
+import * as Location from 'expo-location';
 import { get } from '@/utils/api';
 import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
 import { useTpsStore } from '@/stores/tps-store';
 import type { TPSData } from '@/types/tps';
-import { 
-  useFonts, 
-  Manrope_400Regular, 
+import {
+  useFonts,
+  Manrope_400Regular,
   Manrope_500Medium,
-  Manrope_600SemiBold, 
-  Manrope_700Bold 
+  Manrope_600SemiBold,
+  Manrope_700Bold
 } from '@expo-google-fonts/manrope';
 
 export default function RouteScreen() {
-  const router = useRouter(); // 2. Inisialisasi router
+  const router = useRouter();
   const nearbyTpsList = useTpsStore((state) => state.nearbyTpsList);
   const [routeStops, setRouteStops] = useState<any[]>([]);
   const [routeLine, setRouteLine] = useState<{ latitude: number; longitude: number }[]>([]);
   const [summary, setSummary] = useState({ distanceKm: 0, durationMin: 0 });
+  const [algorithmInfo, setAlgorithmInfo] = useState<{ algorithm: string; usedRealDistances: boolean } | null>(null);
+  const [officerLocation, setOfficerLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const [fontsLoaded] = useFonts({
     'Manrope': Manrope_400Regular,
@@ -69,13 +72,71 @@ export default function RouteScreen() {
     return getRegionForPoints(points, 0.01);
   }, [mapMarkers]);
 
+  // Request location permission and get officer's current GPS position.
+  // Wrapped in defensive try/catch + timeout so any GPS failure never breaks
+  // the route screen — the backend will fall back to default coordinates.
+  useEffect(() => {
+    let cancelled = false;
+
+    const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
+      new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('GPS timeout')), ms);
+        promise.then(
+          (value) => { clearTimeout(timer); resolve(value); },
+          (err) => { clearTimeout(timer); reject(err); },
+        );
+      });
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted' || cancelled) return;
+
+        // Try a fast last-known fix first, then fall back to a fresh fix.
+        try {
+          const last = await Location.getLastKnownPositionAsync();
+          if (last && !cancelled) {
+            setOfficerLocation({ lat: last.coords.latitude, lng: last.coords.longitude });
+          }
+        } catch {
+          /* last-known fix unavailable */
+        }
+
+        try {
+          const loc = await withTimeout(
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+            8000,
+          );
+          if (!cancelled) {
+            setOfficerLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+          }
+        } catch {
+          /* fresh fix timed out — keep last-known (or null) */
+        }
+      } catch {
+        /* permission check itself failed — fall back silently */
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
+        // Build route API URL — include officer GPS when available
+        const routeParams = new URLSearchParams({ withMaps: 'true', algorithm: 'dijkstra' });
+        if (officerLocation) {
+          routeParams.set('startLat', String(officerLocation.lat));
+          routeParams.set('startLng', String(officerLocation.lng));
+        }
+        const nearbyLat = officerLocation?.lat ?? -6.89148;
+        const nearbyLng = officerLocation?.lng ?? 107.6107;
+
         const [routeData, nearbyData, tpsData] = await Promise.all([
-          get('/routes/optimal?withMaps=true'),
-          get('/tps/nearby?lat=-6.89148&lng=107.6107&radiusKm=5&limit=12'),
+          get(`/routes/optimal?${routeParams.toString()}`),
+          get(`/tps/nearby?lat=${nearbyLat}&lng=${nearbyLng}&radiusKm=5&limit=12`),
           get('/tps'),
         ]);
 
@@ -131,7 +192,7 @@ export default function RouteScreen() {
         const usingOptimalRoute = !cachedStops.length && !nearbyStops.length && routeStops.length > 0;
         const nextLine = usingOptimalRoute
           ? routeLine
-          : preferredStops.map((stop) => ({ latitude: stop.latitude, longitude: stop.longitude }));
+          : preferredStops.map((stop: any) => ({ latitude: stop.latitude, longitude: stop.longitude }));
 
         if (active) {
           setRouteStops(preferredStops);
@@ -140,6 +201,12 @@ export default function RouteScreen() {
             durationMin: usingOptimalRoute ? routeDurationMin : 0,
           });
           setRouteLine(nextLine);
+          if (routeData?.algorithm) {
+            setAlgorithmInfo({
+              algorithm: routeData.algorithm,
+              usedRealDistances: routeData.usedRealDistances ?? false,
+            });
+          }
         }
       } catch {
         if (active) {
@@ -151,7 +218,7 @@ export default function RouteScreen() {
     };
     load();
     return () => { active = false; };
-  }, [cachedStops]);
+  }, [cachedStops, officerLocation]);
 
   if (!fontsLoaded) {
     return (
@@ -178,6 +245,33 @@ export default function RouteScreen() {
           <ThemedText style={[manrope, styles.subHeading]}>
             Rekomendasi jalur pengangkutan hari ini.
           </ThemedText>
+          {/* Algorithm badge */}
+          {algorithmInfo && (
+            <View style={styles.algorithmBadgeRow}>
+              <View style={[styles.algorithmBadge, algorithmInfo.algorithm === 'dijkstra' && styles.algorithmBadgeAI]}>
+                <MaterialCommunityIcons
+                  name={algorithmInfo.algorithm === 'dijkstra' ? 'brain' : 'routes'}
+                  size={12}
+                  color={algorithmInfo.algorithm === 'dijkstra' ? '#002045' : '#74777F'}
+                />
+                <ThemedText style={[manrope, styles.algorithmBadgeText, algorithmInfo.algorithm === 'dijkstra' && styles.algorithmBadgeTextAI]}>
+                  {algorithmInfo.algorithm === 'dijkstra' ? 'AI Dijkstra' : 'Greedy'}
+                </ThemedText>
+              </View>
+              {algorithmInfo.usedRealDistances && (
+                <View style={styles.realDistBadge}>
+                  <MaterialCommunityIcons name="road-variant" size={12} color="#1B6E3A" />
+                  <ThemedText style={[manrope, styles.realDistBadgeText]}>Jarak Jalan Nyata</ThemedText>
+                </View>
+              )}
+              {officerLocation && (
+                <View style={styles.gpsBadge}>
+                  <MaterialCommunityIcons name="crosshairs-gps" size={12} color="#7A4500" />
+                  <ThemedText style={[manrope, styles.gpsBadgeText]}>Posisi GPS</ThemedText>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Map Snippet Hero */}
@@ -295,6 +389,25 @@ const styles = StyleSheet.create({
   headerTextSection: { paddingHorizontal: 20, paddingTop: 24, marginBottom: 20 },
   mainHeading: { fontSize: 30, fontWeight: '700', color: '#0D1C2E', letterSpacing: -0.6 },
   subHeading: { fontSize: 16, color: '#74777F', marginTop: 4, fontWeight: '400' },
+
+  algorithmBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10, gap: 6 },
+  algorithmBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#E8EDF5', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  algorithmBadgeAI: { backgroundColor: '#DCE9FF' },
+  algorithmBadgeText: { fontSize: 11, fontWeight: '600', color: '#74777F' },
+  algorithmBadgeTextAI: { color: '#002045' },
+  realDistBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#D4F5E2', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  realDistBadgeText: { fontSize: 11, fontWeight: '600', color: '#1B6E3A' },
+  gpsBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FDEFD9', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  gpsBadgeText: { fontSize: 11, fontWeight: '600', color: '#7A4500' },
   
   mapHero: {
     marginHorizontal: 20,

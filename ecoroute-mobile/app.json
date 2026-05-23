@@ -29,11 +29,10 @@
     "plugins": [
       "expo-router",
       [
-        "expo-notifications",
+        "expo-location",
         {
-          "icon": "./assets/images/icon.png",
-          "color": "#002045",
-          "sounds": []
+          "locationAlwaysAndWhenInUsePermission": "EcoRoute membutuhkan akses lokasi untuk mengoptimalkan rute pengangkutan sampah berdasarkan posisi petugas saat ini.",
+          "locationWhenInUsePermission": "EcoRoute membutuhkan akses lokasi untuk mengoptimalkan rute pengangkutan sampah berdasarkan posisi petugas saat ini."
         }
       ],
       [

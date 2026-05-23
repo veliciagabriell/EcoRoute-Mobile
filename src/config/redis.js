@@ -8,7 +8,13 @@ let client = null;
 let isReady = false;
 
 if (REDIS_URL) {
-	client = new Redis(REDIS_URL, { maxRetriesPerRequest: 3 });
+	client = new Redis(REDIS_URL, {
+		maxRetriesPerRequest: 1,    // was 3 — a slow Redis used to multiply per-call latency
+		connectTimeout: 3000,
+		commandTimeout: 2000,        // any single GET/SET aborts after 2s
+		enableOfflineQueue: false,   // fail fast instead of buffering when disconnected
+		lazyConnect: false,
+	});
 
 	// Prevent unhandled error events from crashing the process
 	client.on('error', (err) => {
