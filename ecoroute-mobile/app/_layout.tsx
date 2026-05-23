@@ -16,8 +16,6 @@ import {
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/contexts/auth-context';
-import { setupNotificationChannel, requestNotificationPermission } from '@/services/notification-service';
-import { useTpsMonitor } from '@/hooks/use-tps-monitor';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -40,18 +38,6 @@ function RootLayoutContent() {
 
   const segments = useSegments();
   const router = useRouter();
-
-  // Enable TPS critical monitoring for petugas role
-  useTpsMonitor(isSignedIn && user?.role === 'petugas');
-
-  // Request notification permission when petugas signs in
-  useEffect(() => {
-    if (isSignedIn && user?.role === 'petugas') {
-      setupNotificationChannel()
-        .then(() => requestNotificationPermission())
-        .catch((err) => console.warn('[Layout] Notification setup failed:', err));
-    }
-  }, [isSignedIn, user?.role]);
 
   // Hide splash screen once fonts are loaded
   useEffect(() => {
