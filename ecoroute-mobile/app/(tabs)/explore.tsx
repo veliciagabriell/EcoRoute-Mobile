@@ -1,15 +1,26 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Header } from '@/components/header';
-import { useEffect, useMemo, useState } from 'react';
 import { get } from '@/utils/api';
+import { normalizeTpsList } from '@/services/tps-service';
 import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
 import { useMqttSensor } from '@/hooks/use-mqtt-sensor';
 import { useTpsStore } from '@/stores/tps-store';
 import type { TPSData } from '@/types/tps';
+import { getTpsStatus, getTpsStatusVisual, type TpsStatusKey } from '@/utils/tps-status';
+
+function getMaterialStatusIcon(status: TpsStatusKey | 'TIDAK_ADA_DATA') {
+  if (status === 'DARURAT') return 'warning';
+  if (status === 'PENUH') return 'delete-outline';
+  if (status === 'BAU_EKSTREM') return 'air';
+  if (status === 'PERINGATAN') return 'report-problem';
+  if (status === 'NORMAL_MQ135_ERROR') return 'sensors-off';
+  if (status === 'TIDAK_ADA_DATA') return 'access-time';
+  return 'check-circle';
+}
 
 export default function TPSDetailScreen() {
   const router = useRouter();
@@ -61,35 +72,54 @@ export default function TPSDetailScreen() {
     }).format(date);
   };
 
+  const activeStatus = useMemo(() => {
+    if (!activeTPS?.lastUpdate) {
+      return {
+        label: 'TIDAK ADA DATA',
+        description: 'Belum ada pembacaan sensor.',
+        color: '#74777F',
+        bg: '#E5EEFF',
+        icon: getMaterialStatusIcon('TIDAK_ADA_DATA'),
+      };
+    }
+
+    const status = getTpsStatus(activeTPS.fullness, activeTPS.ammonia, false);
+    const visual = getTpsStatusVisual(status);
+    const descriptions: Record<string, string> = {
+      DARURAT: 'TPS penuh dan bau ekstrim',
+      PENUH: 'Kapasitas TPS sudah kritis',
+      BAU_EKSTREM: 'Kadar NH3 sudah kritis',
+      PERINGATAN: 'TPS perlu dipantau',
+      NORMAL_MQ135_ERROR: 'Sensor MQ135 perlu dicek',
+      NORMAL: 'Kondisi TPS aman',
+    };
+
+    return {
+      label: visual.label,
+      description: descriptions[status],
+      color: visual.color,
+      bg: visual.bg,
+      icon: getMaterialStatusIcon(status),
+    };
+  }, [activeTPS]);
+
   useEffect(() => {
     let mounted = true;
     async function load() {
       try {
         const data = await get('/tps');
-        const list = data?.data || data || [];
-        const mapped = (list as any[])
-          .map((item) => {
-            const tps = item?.tps ?? item;
-            const latest = item?.latestReading ?? item?.latest_reading ?? item?.sensor_data;
-            if (!tps?.id) return null;
-            const latitude = Number(tps?.latitude);
-            const longitude = Number(tps?.longitude);
-            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-            const fullness = Number(latest?.fullness_pct ?? latest?.fullness ?? 0);
-            const ammonia = Number(latest?.ammonia_ppm ?? latest?.ammonia ?? 0);
-            const temperature = Number(latest?.temperature_c ?? latest?.temperature ?? 0);
-            return {
-              id: String(tps.id),
-              name: String(tps.name ?? 'TPS'),
-              fullness,
-              ammonia,
-              temperature,
-              lastUpdate: latest?.timestamp ?? '',
-              latitude,
-              longitude,
-            } as TPSData;
-          })
-          .filter(Boolean) as TPSData[];
+        const mapped = normalizeTpsList(data)
+          .filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude))
+          .map((item): TPSData => ({
+            id: item.id,
+            name: item.name,
+            fullness: item.latestReading?.fullness_pct ?? 0,
+            ammonia: item.latestReading?.ammonia_ppm ?? 0,
+            temperature: item.latestReading?.temperature_c ?? 0,
+            lastUpdate: item.latestReading?.timestamp ?? '',
+            latitude: item.latitude,
+            longitude: item.longitude,
+          }));
 
         if (mounted) {
           setTpsList(mapped);
@@ -105,21 +135,6 @@ export default function TPSDetailScreen() {
     load();
     return () => { mounted = false };
   }, [selectedTPSId, setSelectedTPSId, upsertTPSList]);
-
-  const statusLabel = useMemo(() => {
-    if (mqttState.error) return 'STATUS: ERROR';
-    if (!activeTPS) return 'STATUS: TIDAK ADA DATA';
-    return mqttState.isLive ? 'STATUS: LIVE' : 'STATUS: MENUNGGU DATA';
-  }, [mqttState.error, mqttState.isLive, activeTPS]);
-
-  const statusDesc = useMemo(() => {
-    if (mqttState.error) return mqttState.error;
-    if (!activeTPS) return 'Belum ada TPS dipilih.';
-    if (mqttState.isLive) {
-      return `Update terakhir: ${formatLastUpdate(activeTPS.lastUpdate)}`;
-    }
-    return 'Menunggu pembaruan sensor dari perangkat.';
-  }, [mqttState.error, mqttState.isLive, activeTPS]);
 
   return (
     <View style={styles.container}>
@@ -170,13 +185,17 @@ export default function TPSDetailScreen() {
             </ScrollView>
           </View>
         )}
-        <View style={styles.statusBanner}>
-          <View style={styles.statusIconBox}>
-            <MaterialIcons name="warning" size={16} color="#FFFFFF" />
+        <View style={[styles.statusBanner, { backgroundColor: activeStatus.bg }]}>
+          <View style={[styles.statusIconBox, { backgroundColor: activeStatus.color }]}>
+            <MaterialIcons name={activeStatus.icon} size={16} color="#FFFFFF" />
           </View>
           <View style={styles.statusTextBox}>
-            <ThemedText style={styles.statusTitle}>{statusLabel}</ThemedText>
-            <ThemedText style={styles.statusDesc}>{statusDesc}</ThemedText>
+            <ThemedText style={[styles.statusTitle, { color: activeStatus.color }]}>
+              STATUS: {activeStatus.label}
+            </ThemedText>
+            <ThemedText style={[styles.statusDesc, { color: activeStatus.color }]}>
+              {mqttState.error || activeStatus.description}
+            </ThemedText>
           </View>
         </View>
 
@@ -256,17 +275,17 @@ export default function TPSDetailScreen() {
 
           <View style={[styles.metricCard, { minHeight: 82 }]}>
             <View style={styles.metricHeader}>
-              <View style={[styles.metricIconBox, { backgroundColor: '#E5EEFF' }]}>
-                <MaterialCommunityIcons name="thermometer" size={14} color="#43474E" />
+              <View style={[styles.metricIconBox, { backgroundColor: activeStatus.bg }]}>
+                <MaterialIcons name={activeStatus.icon} size={14} color={activeStatus.color} />
               </View>
-              <ThemedText style={styles.metricTitle}>Temperature</ThemedText>
+              <ThemedText style={styles.metricTitle}>Status</ThemedText>
             </View>
             <View style={styles.metricRow}>
-              <ThemedText style={styles.metricValueLarge}>
-                {formatValue(activeTPS?.temperature ?? Number.NaN)}
+              <ThemedText style={[styles.metricValueLarge, { color: activeStatus.color, fontSize: 20 }]}>
+                {activeStatus.label}
               </ThemedText>
-              <ThemedText style={styles.metricUnit}>C</ThemedText>
             </View>
+            <ThemedText style={styles.metricFootnote}>{activeStatus.description}</ThemedText>
           </View>
 
           <View style={[styles.metricCard, { minHeight: 82 }]}>

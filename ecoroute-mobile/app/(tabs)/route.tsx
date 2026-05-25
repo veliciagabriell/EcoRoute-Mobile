@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Alert } from 'react-native';
 import { Header } from '@/components/header';
 import { ThemedText } from '@/components/themed-text';
@@ -6,6 +6,7 @@ import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { get } from '@/utils/api';
+import { normalizeTpsList } from '@/services/tps-service';
 import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
 import { useTpsStore } from '@/stores/tps-store';
 import type { TPSData } from '@/types/tps';
@@ -37,6 +38,22 @@ export default function RouteScreen() {
 
   const manrope = { fontFamily: 'Manrope' };
 
+  const getStopStatusVisual = useCallback((stop: any) => {
+    const reading = stop?.latestReading ?? null;
+    if (!reading) {
+      return {
+        label: 'MENUNGGU',
+        color: '#74777F',
+        bg: '#E5EEFF',
+        severityKey: 'normal' as const,
+      };
+    }
+
+    const fullnessPct = Number(reading.fullness_pct ?? 0);
+    const ammoniaPpm = Number(reading.ammonia_ppm ?? 0);
+    return getTpsStatusVisual(getTpsStatus(fullnessPct, ammoniaPpm, false));
+  }, []);
+
   const cachedStops = useMemo(
     () =>
       nearbyTpsList.map((tps: TPSData) => ({
@@ -64,9 +81,9 @@ export default function RouteScreen() {
           name: stop.name,
           latitude: Number(stop.latitude),
           longitude: Number(stop.longitude),
-          status: stop?.latestReading?.alert_level || 'normal',
+          status: getStopStatusVisual(stop).severityKey,
         })),
-    [routeStops]
+    [getStopStatusVisual, routeStops]
   );
 
   const mapRegion = useMemo(() => {
@@ -144,7 +161,21 @@ export default function RouteScreen() {
 
         const routeStops = (routeData?.stops || [])
           .slice()
-          .sort((a: any, b: any) => (a?.order || 0) - (b?.order || 0));
+          .sort((a: any, b: any) => (a?.order || 0) - (b?.order || 0))
+          .map((stop: any) => {
+            const normalized = normalizeTpsList([stop])[0];
+            if (!normalized) return stop;
+
+            return {
+              ...stop,
+              id: normalized.id,
+              name: normalized.name,
+              latitude: normalized.latitude,
+              longitude: normalized.longitude,
+              latestReading: normalized.latestReading,
+              distanceFromPrevKm: stop?.distanceFromPrevKm ?? stop?.distance_km,
+            };
+          });
         const routeDistanceKm = routeData?.maps?.distance_m
           ? routeData.maps.distance_m / 1000
           : routeData?.totalDistanceKm || 0;
@@ -155,34 +186,27 @@ export default function RouteScreen() {
           longitude: coord[0],
         }));
 
-        const nearbyStops = (nearbyData?.data || [])
-          .map((item: any, index: number) => ({
-            id: item?.tps?.id || `nearby-${index}`,
-            name: item?.tps?.name || 'TPS',
-            latitude: Number(item?.tps?.latitude),
-            longitude: Number(item?.tps?.longitude),
-            latestReading: item?.latestReading,
-            distanceFromPrevKm: item?.distance_km,
+        const nearbyStops = normalizeTpsList(nearbyData)
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            latitude: item.latitude,
+            longitude: item.longitude,
+            latestReading: item.latestReading,
+            distanceFromPrevKm: item.distanceKm,
           }))
           .filter((stop: any) => Number.isFinite(stop.latitude) && Number.isFinite(stop.longitude));
 
-        const tpsList = (tpsData?.data || tpsData || [])
-          .map((item: any, index: number) => {
-            const tps = item?.tps ?? item;
-            if (!tps?.id) return null;
-            const latitude = Number(tps?.latitude);
-            const longitude = Number(tps?.longitude);
-            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-            return {
-              id: String(tps.id),
-              name: String(tps.name ?? `TPS ${index + 1}`),
-              latitude,
-              longitude,
-              latestReading: item?.latestReading ?? item?.latest_reading ?? item?.sensor_data,
-              distanceFromPrevKm: undefined,
-            };
-          })
-          .filter(Boolean) as any[];
+        const tpsList = normalizeTpsList(tpsData)
+          .filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude))
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            latitude: item.latitude,
+            longitude: item.longitude,
+            latestReading: item.latestReading,
+            distanceFromPrevKm: undefined,
+          }));
 
         let preferredStops = cachedStops.length
           ? cachedStops
@@ -194,6 +218,7 @@ export default function RouteScreen() {
         const usingOptimalRoute = !cachedStops.length && !nearbyStops.length && routeStops.length > 0;
 
         // Client-side Dijkstra when the backend didn't provide an ordered route
+        let clientDistanceKm = 0;
         if (!usingOptimalRoute && preferredStops.length > 1) {
           const startLat = officerLocation?.lat ?? -6.89148;
           const startLng = officerLocation?.lng ?? 107.6107;
@@ -205,9 +230,7 @@ export default function RouteScreen() {
           }));
           const { orderedStops, totalDistKm } = computeOptimalRoute(startLat, startLng, nodes);
           preferredStops = orderedStops;
-          if (active) {
-            setSummary((prev) => ({ ...prev, distanceKm: totalDistKm }));
-          }
+          clientDistanceKm = totalDistKm;
         }
 
         const nextLine = usingOptimalRoute
@@ -217,7 +240,7 @@ export default function RouteScreen() {
         if (active) {
           setRouteStops(preferredStops);
           setSummary({
-            distanceKm: usingOptimalRoute ? routeDistanceKm : 0,
+            distanceKm: usingOptimalRoute ? routeDistanceKm : clientDistanceKm,
             durationMin: usingOptimalRoute ? routeDurationMin : 0,
           });
           setRouteLine(nextLine);
@@ -335,9 +358,8 @@ export default function RouteScreen() {
 
             {routeStops.map((stop: any, index: number) => {
               const fullnessPct = Number(stop?.latestReading?.fullness_pct ?? 0);
-              const ammoniaPpm = Number(stop?.latestReading?.ammonia_ppm ?? 0);
-              const statusKey = getTpsStatus(fullnessPct, ammoniaPpm, false);
-              const visual = getTpsStatusVisual(statusKey);
+              const hasReading = Boolean(stop?.latestReading);
+              const visual = getStopStatusVisual(stop);
               const distance = stop?.distanceFromPrevKm;
               return (
                 <RouteItem
@@ -347,7 +369,7 @@ export default function RouteScreen() {
                   status={visual.label}
                   statusColor={visual.color}
                   statusBg={visual.bg}
-                  desc={`${Number.isFinite(fullnessPct) ? `${fullnessPct.toFixed(0)}%` : '-'} Penuh • ${Number.isFinite(distance) ? `${distance.toFixed(1)} km` : '-'}`}
+                  desc={`${hasReading && Number.isFinite(fullnessPct) ? `${fullnessPct.toFixed(0)}%` : '-'} Penuh • ${Number.isFinite(distance) ? `${distance.toFixed(1)} km` : '-'}`}
                 />
               );
             })}

@@ -12,6 +12,7 @@ import {
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { get } from '@/utils/api';
+import { normalizeTpsList } from '@/services/tps-service';
 import * as Location from 'expo-location';
 import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
 import { useTpsStore } from '@/stores/tps-store';
@@ -88,33 +89,15 @@ export default function TPSMapScreen() {
     const load = async () => {
       try {
         const data = await get('/tps');
-        const list: any[] = data?.data || data || [];
-
-        const mapped = list
-          .map((item: any): MapStop | null => {
-            const tps = item?.tps ?? item;
-            const reading = item?.latestReading ?? null;
-            const lat = Number(tps?.latitude);
-            const lng = Number(tps?.longitude);
-            if (!tps?.id || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-            return {
-              id: String(tps.id),
-              name: String(tps.name ?? 'TPS'),
-              latitude: lat,
-              longitude: lng,
-              latestReading: reading
-                ? {
-                    fullness_pct: Number(reading.fullness_pct ?? reading.fullness ?? 0),
-                    ammonia_ppm: Number(reading.ammonia_ppm ?? reading.ammonia ?? 0),
-                    temperature_c: Number(reading.temperature_c ?? reading.temperature ?? 0),
-                    alert_level: reading.alert_level ?? null,
-                    timestamp: reading.timestamp ?? '',
-                  }
-                : null,
-            };
-          })
-          .filter(Boolean) as MapStop[];
+        const mapped = normalizeTpsList(data)
+          .filter((item) => Number.isFinite(item.latitude) && Number.isFinite(item.longitude))
+          .map((item): MapStop => ({
+            id: item.id,
+            name: item.name,
+            latitude: item.latitude,
+            longitude: item.longitude,
+            latestReading: item.latestReading,
+          }));
 
         if (isActive) {
           setStops(mapped);
