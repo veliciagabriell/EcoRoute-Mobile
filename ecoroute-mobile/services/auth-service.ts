@@ -64,7 +64,9 @@ export async function refreshAccessToken(refreshToken: string) {
     const response = (await post('/auth/refresh', { refreshToken })) as
       | ApiResponse<{ accessToken?: string; access_token?: string }>
       | { accessToken?: string; access_token?: string };
-    const payload = 'data' in response && response.data ? response.data : response;
+    const payload = (
+      'data' in response && response.data ? response.data : response
+    ) as { accessToken?: string; access_token?: string };
     const accessToken = payload.accessToken || payload.access_token;
     if (!accessToken) throw new Error('Response token tidak valid');
     return accessToken;
@@ -150,7 +152,7 @@ function getAuthErrorMessage(err: unknown) {
     normalized.includes('network request failed') ||
     normalized.includes('network error')
   ) {
-    return 'Network error — tidak bisa konek ke server. Pastikan backend jalan, IP server benar di .env, dan firewall mengizinkan port 3000.';
+    return 'Network error — tidak bisa konek ke server. Pastikan backend jalan, IP server benar di .env (EXPO_PUBLIC_API_URL), dan firewall mengizinkan port backend.';
   }
 
   try {
