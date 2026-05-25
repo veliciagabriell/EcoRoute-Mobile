@@ -142,6 +142,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('[Auth] Register response:', registerResp);
       if (!isMountedRef.current) return;
+      if (registerResp?.access_token && registerResp?.user) {
+        setUser(registerResp.user);
+        setIsSignedIn(true);
+      } else {
+        throw new Error('Response registrasi tidak valid');
+      }
     } catch (err: any) {
       console.error('[Auth] Register error:', err);
       if (isMountedRef.current) {

@@ -10,12 +10,12 @@ const registerSchema = Joi.object({
     'string.email': 'Format email tidak valid',
     'any.required': 'Email wajib diisi',
   }),
-  password: Joi.string().min(8).required().messages({
-    'string.min': 'Kata sandi minimal 8 karakter',
+  password: Joi.string().min(6).required().messages({
+    'string.min': 'Kata sandi minimal 6 karakter',
     'any.required': 'Kata sandi wajib diisi',
   }),
-  role: Joi.string().valid('umum', 'petugas', 'admin').default('umum').messages({
-    'any.only': 'Role harus salah satu dari: umum, petugas, admin',
+  role: Joi.string().valid('public', 'officer', 'umum', 'petugas', 'admin').default('public').messages({
+    'any.only': 'Role harus salah satu dari: public, officer, umum, petugas, admin',
   }),
 });
 

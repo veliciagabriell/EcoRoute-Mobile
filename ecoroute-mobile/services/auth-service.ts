@@ -43,7 +43,9 @@ export async function registerUser(payload: {
   role: 'public' | 'officer' | 'admin';
 }) {
   try {
-    return await post('/auth/register', payload);
+    const data = normalizeAuthResponse(await post('/auth/register', payload));
+    await saveSession(data);
+    return data;
   } catch (err) {
     throw new Error(getAuthErrorMessage(err));
   }
@@ -61,9 +63,18 @@ export async function loginUser(payload: { email: string; password: string }) {
 
 export async function refreshAccessToken(refreshToken: string) {
   try {
-    const response = (await post('/auth/refresh', { refreshToken })) as
-      | ApiResponse<{ accessToken?: string; access_token?: string }>
-      | { accessToken?: string; access_token?: string };
+    let response: ApiResponse<{ accessToken?: string; access_token?: string }> | { accessToken?: string; access_token?: string };
+    try {
+      response = (await post('/auth/refresh', { refreshToken })) as
+        | ApiResponse<{ accessToken?: string; access_token?: string }>
+        | { accessToken?: string; access_token?: string };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      if (!message.toLowerCase().includes('refresh')) throw err;
+      response = (await post('/auth/refresh', { refresh_token: refreshToken })) as
+        | ApiResponse<{ accessToken?: string; access_token?: string }>
+        | { accessToken?: string; access_token?: string };
+    }
     const payload = (
       'data' in response && response.data ? response.data : response
     ) as { accessToken?: string; access_token?: string };
@@ -77,7 +88,14 @@ export async function refreshAccessToken(refreshToken: string) {
 
 export async function fetchMe() {
   try {
-    const response = (await get('/users/me')) as ApiResponse<{ user?: AuthUser }> | AuthUser;
+    let response: ApiResponse<{ user?: AuthUser }> | AuthUser;
+    try {
+      response = (await get('/users/me')) as ApiResponse<{ user?: AuthUser }> | AuthUser;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '';
+      if (!message.includes('404') && !message.toLowerCase().includes('not found')) throw err;
+      response = (await get('/auth/me')) as ApiResponse<{ user?: AuthUser }> | AuthUser;
+    }
     const user = ('data' in response && response.data?.user) ? response.data.user : response as AuthUser;
     return normalizeUser(user);
   } catch (err) {
@@ -154,14 +172,14 @@ function getAuthErrorMessage(err: unknown) {
     return 'Sesi berakhir. Silakan login kembali.';
   }
   if (normalized.includes('timeout') || normalized.includes('aborted')) {
-    return 'Koneksi timeout — server tidak merespon. Cek IP server di .env (EXPO_PUBLIC_API_URL) dan pastikan HP & PC di Wi-Fi yang sama.';
+    return 'Koneksi timeout - API EcoRoute tidak merespon. Cek EXPO_PUBLIC_API_URL dan koneksi internet.';
   }
   if (
     normalized.includes('failed to fetch') ||
     normalized.includes('network request failed') ||
     normalized.includes('network error')
   ) {
-    return 'Network error - tidak bisa konek ke server. Pastikan backend jalan, IP server benar di .env (EXPO_PUBLIC_API_URL), dan firewall mengizinkan port 5000.';
+    return 'Network error - tidak bisa konek ke API EcoRoute. Pastikan EXPO_PUBLIC_API_URL mengarah ke web Vercel dan koneksi internet aktif.';
   }
 
   try {

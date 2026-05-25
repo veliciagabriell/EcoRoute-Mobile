@@ -37,8 +37,8 @@ export default function RegisterScreen({ onNavigateToLogin }: { onNavigateToLogi
       setError('Format email tidak valid');
       return;
     }
-    if (password.length < 8) {
-      setError('Kata sandi minimal 8 karakter');
+    if (password.length < 6) {
+      setError('Kata sandi minimal 6 karakter');
       return;
     }
     if (password !== confirmPassword) {
@@ -48,8 +48,6 @@ export default function RegisterScreen({ onNavigateToLogin }: { onNavigateToLogi
 
     try {
       await register(email, password, namaLengkap, role);
-      // After successful registration, navigate back to login
-      onNavigateToLogin();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registrasi gagal');
     }
@@ -207,7 +205,7 @@ export default function RegisterScreen({ onNavigateToLogin }: { onNavigateToLogi
           >
             <TextInput
               style={[styles.input, { color: colors.textPrimary }]}
-              placeholder="Minimal 8 karakter"
+              placeholder="Minimal 6 karakter"
               placeholderTextColor={colors.textSecondary}
               value={password}
               onChangeText={setPassword}

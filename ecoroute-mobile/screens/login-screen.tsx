@@ -28,8 +28,8 @@ export default function LoginScreen({ onNavigateToRegister }: { onNavigateToRegi
       setError('Format email tidak valid');
       return;
     }
-    if (password.length < 8) {
-      setError('Kata sandi minimal 8 karakter');
+    if (password.length < 6) {
+      setError('Kata sandi minimal 6 karakter');
       return;
     }
     console.log('[LoginScreen] handleLogin called with:', email);

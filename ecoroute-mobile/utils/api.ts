@@ -1,11 +1,12 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+const DEFAULT_API_URL = 'https://ecoroute-web.vercel.app/api';
+
 // Resolution order:
 // 1. EXPO_PUBLIC_API_URL from .env (manual override, recommended for physical devices)
 // 2. app.json extra.API_URL (legacy override)
-// 3. Inferred from the Expo dev-server hostUri (works for LAN dev mode automatically)
-// 4. Android emulator localhost shim
+// 3. Deployed EcoRoute web API on Vercel
 const configuredUrl = ((Constants.expoConfig as any)?.extra?.API_URL as string | undefined)?.trim();
 const envUrl = (process.env.EXPO_PUBLIC_API_URL as string | undefined)?.trim();
 const hostUri = (Constants.expoConfig as any)?.hostUri || (Constants as any)?.manifest?.hostUri;
@@ -17,15 +18,11 @@ const inferredHost = typeof hostUri === 'string' ? hostUri.split(':')[0] : null;
 export const API_URL = (
   (configuredUrl && configuredUrl !== 'undefined' ? configuredUrl : null) ||
   (envUrl && envUrl !== 'undefined' ? envUrl : null) ||
-  (Platform.OS === 'web'
-    ? 'http://localhost:5000/api'
-    : inferredHost
-      ? `http://${inferredHost}:5000/api`
-      : 'http://10.0.2.2:5000/api')
+  DEFAULT_API_URL
 ).replace(/\/$/, '');
 
 console.log('[API] Using API_URL:', API_URL);
-console.log('[API] Source — configured:', configuredUrl, '| env:', envUrl, '| inferredHost:', inferredHost);
+console.log('[API] Source - configured:', configuredUrl, '| env:', envUrl, '| inferredHost:', inferredHost, '| platform:', Platform.OS);
 
 let accessToken: string | null = null;
 

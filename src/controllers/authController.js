@@ -23,9 +23,16 @@ async function register(req, res, next) {
     const SALT_ROUNDS = 10;
     const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // Buat user baru (role default 'umum' jika tidak diberikan)
-    const allowedRoles = ['umum', 'petugas', 'admin'];
-    const assignedRole = allowedRoles.includes(role) ? role : 'umum';
+    // Keep the API compatible with the web app contract while still accepting
+    // older mobile role names if they are sent by a stale client.
+    const roleMap = {
+      umum: 'public',
+      petugas: 'officer',
+      public: 'public',
+      officer: 'officer',
+      admin: 'admin',
+    };
+    const assignedRole = roleMap[role] || 'public';
 
     let newUser;
     try {
@@ -40,12 +47,17 @@ async function register(req, res, next) {
     } catch (err) {
       const msg = typeof err?.message === 'string' ? err.message : '';
       const isEnumError = msg.includes('invalid input value for enum user_role');
-      if (isEnumError && assignedRole === 'umum') {
+      const legacyRoleMap = {
+        public: 'umum',
+        officer: 'petugas',
+        admin: 'admin',
+      };
+      if (isEnumError && legacyRoleMap[assignedRole]) {
         newUser = await usersModel.create({
           name,
           email,
           password_hash,
-          role: 'public',
+          role: legacyRoleMap[assignedRole],
           work_area: null,
           fcm_token: null,
         });
@@ -59,13 +71,29 @@ async function register(req, res, next) {
   void passwordHash;
     const normalizedProfile = {
       ...userProfile,
-      role: userProfile.role === 'public' ? 'umum' : userProfile.role,
+      role: userProfile.role === 'umum' ? 'public' : userProfile.role === 'petugas' ? 'officer' : userProfile.role,
     };
     console.log('[Auth] Register success:', { id: userProfile.id, email: userProfile.email });
 
+    const access = jwt.sign(
+      { sub: newUser.id, id: newUser.id, role: normalizedProfile.role, name: normalizedProfile.name, workArea: normalizedProfile.work_area },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_ACCESS_EXP || process.env.ACCESS_TOKEN_EXPIRES_IN || '15m' }
+    );
+    const refresh = jwt.sign(
+      { sub: newUser.id, id: newUser.id, role: normalizedProfile.role, name: normalizedProfile.name, workArea: normalizedProfile.work_area },
+      process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_REFRESH_EXP || process.env.REFRESH_TOKEN_EXPIRES_IN || '7d' }
+    );
+
     return res.status(201).json({
+      success: true,
       message: 'Registrasi berhasil',
-      user: normalizedProfile,
+      data: {
+        accessToken: access,
+        refreshToken: refresh,
+        user: normalizedProfile,
+      },
     });
   } catch (err) {
     console.error('[Auth] Register error:', err.message);
@@ -110,7 +138,7 @@ async function login(req, res, next) {
   void passwordHash;
     const normalizedProfile = {
       ...userProfile,
-      role: userProfile.role === 'public' ? 'umum' : userProfile.role,
+      role: userProfile.role === 'umum' ? 'public' : userProfile.role === 'petugas' ? 'officer' : userProfile.role,
     };
     console.log('[Auth] Login success:', { id: userProfile.id, email: userProfile.email, role: userProfile.role });
 
@@ -130,15 +158,19 @@ async function login(req, res, next) {
  * Memperbarui access_token menggunakan refresh_token.
  */
 function refresh(req, res) {
-  const { refresh_token } = req.body;
+  const refreshToken = req.body.refreshToken || req.body.refresh_token;
   try {
-    const payload = jwt.verify(refresh_token, process.env.JWT_SECRET);
+    const payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
     const access = jwt.sign(
-      { sub: payload.sub },
+      { sub: payload.sub || payload.id, id: payload.id || payload.sub, role: payload.role, name: payload.name, workArea: payload.workArea },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_ACCESS_EXP || '15m' }
+      { expiresIn: process.env.JWT_ACCESS_EXP || process.env.ACCESS_TOKEN_EXPIRES_IN || '15m' }
     );
-    res.json({ access_token: access });
+    res.json({
+      success: true,
+      data: { accessToken: access },
+      access_token: access,
+    });
   } catch (err) {
     res.status(401).json({ error: 'Refresh token tidak valid atau sudah kedaluwarsa' });
   }

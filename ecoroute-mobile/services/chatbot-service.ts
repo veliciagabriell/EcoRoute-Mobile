@@ -14,7 +14,7 @@ type StreamCallbacks = {
 const getApiBaseUrl = (): string => {
   if (!API_URL) {
     console.warn('[EcoBot] API_URL tidak ditemukan.');
-    console.warn('[EcoBot] Isi ecoroute-mobile/.env: EXPO_PUBLIC_API_URL=http://<IP_PC_KAMU>:5000/api');
+    console.warn('[EcoBot] Isi ecoroute-mobile/.env: EXPO_PUBLIC_API_URL=https://ecoroute-web.vercel.app/api');
     return '';
   }
 
@@ -87,7 +87,7 @@ export async function sendChat(messages: ChatMessage[]): Promise<string> {
   } catch (err) {
     if (err instanceof TypeError && err.message.includes('Network request failed')) {
       throw new Error(
-        'Tidak bisa terhubung ke backend web. Pastikan:\n1. Backend web berjalan di port 5000\n2. IP di .env sudah benar, bukan localhost\n3. HP/emulator dan PC berada di jaringan Wi-Fi yang sama'
+        'Tidak bisa terhubung ke API EcoRoute. Pastikan EXPO_PUBLIC_API_URL mengarah ke web Vercel dan koneksi internet aktif.'
       );
     }
     throw err;
