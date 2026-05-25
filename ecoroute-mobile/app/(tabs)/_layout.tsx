@@ -15,7 +15,7 @@ export default function TabLayout() {
   const pathname = usePathname();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(
-    (user?.role === 'admin' || user?.role === 'petugas') ? 'home' : 'profile'
+    (user?.role === 'admin' || user?.role === 'officer') ? 'home' : 'profile'
   );
 
   // Detect current route and update active tab
@@ -40,7 +40,7 @@ export default function TabLayout() {
   // Define tabs based on user role
   const tabs: TabItem[] = [];
   
-  if (user?.role === 'admin' || user?.role === 'petugas') {
+  if (user?.role === 'admin' || user?.role === 'officer') {
     tabs.push({ id: 'home', label: 'Dashboard', icon: 'dashboard' });
   } else {
     tabs.push({ id: 'ecobot', label: 'EcoBot', icon: 'chat' });
@@ -92,14 +92,14 @@ export default function TabLayout() {
             name="index"
             options={{
               title: 'Dashboard',
-              href: (user?.role === 'admin' || user?.role === 'petugas') ? '/(tabs)' : null,
+              href: (user?.role === 'admin' || user?.role === 'officer') ? '/(tabs)' : null,
             }}
           />
           <Tabs.Screen
             name="ecobot"
             options={{
               title: 'EcoBot',
-              href: user?.role === 'umum' ? '/(tabs)/ecobot' : null,
+              href: user?.role === 'public' ? '/(tabs)/ecobot' : null,
             }}
           />
           <Tabs.Screen

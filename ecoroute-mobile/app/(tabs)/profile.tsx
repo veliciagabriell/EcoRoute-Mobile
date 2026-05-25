@@ -31,7 +31,7 @@ export default function ProfileScreen() {
     namaLengkap: '',
     email: '',
     nomorTelepon: '+62 ',
-    role: 'umum',
+    role: 'public',
     workArea: 'Tidak ada',
   });
 
@@ -45,7 +45,7 @@ export default function ProfileScreen() {
         namaLengkap: user.name || 'User',
         email: user.email || '',
         nomorTelepon: '+62 ',
-        role: user.role || 'umum',
+        role: user.role || 'public',
         workArea: user.work_area || 'Tidak ada',
       });
     } else {
@@ -176,7 +176,7 @@ export default function ProfileScreen() {
                   color: '#00497E',
                   marginLeft: 4
                 }]}>
-                  {formData.role === 'petugas' ? 'Petugas' : 'Pengguna'}
+                  {formData.role === 'officer' ? 'Petugas' : 'Pengguna'}
                 </ThemedText>
               </View>
             </View>
@@ -246,12 +246,12 @@ export default function ProfileScreen() {
                 </ThemedText>
                 <View style={[styles.textInput, { justifyContent: 'center' }]}>
                   <ThemedText style={[manrope, { fontSize: 16, color: '#0D1C2E' }]}>
-                    {formData.role === 'petugas' ? 'Petugas' : formData.role === 'admin' ? 'Admin' : 'Pengguna Umum'}
+                    {formData.role === 'officer' ? 'Petugas' : formData.role === 'admin' ? 'Admin' : 'Pengguna Umum'}
                   </ThemedText>
                 </View>
               </View>
 
-              {(formData.role === 'petugas' || formData.role === 'admin') && (
+              {(formData.role === 'officer' || formData.role === 'admin') && (
                 <View>
                   <ThemedText style={[manrope, styles.inputLabel]}>
                     Area Operasional

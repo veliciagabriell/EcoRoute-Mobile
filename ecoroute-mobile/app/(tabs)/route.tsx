@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Alert } from 'react-native';
 import { Header } from '@/components/header';
 import { ThemedText } from '@/components/themed-text';
 import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -9,6 +9,8 @@ import { get } from '@/utils/api';
 import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
 import { useTpsStore } from '@/stores/tps-store';
 import type { TPSData } from '@/types/tps';
+import { getTpsStatus, getTpsStatusVisual } from '@/utils/tps-status';
+import { computeOptimalRoute, buildGoogleMapsUrl, type RouteNode } from '@/utils/dijkstra';
 import {
   useFonts,
   Manrope_400Regular,
@@ -182,7 +184,7 @@ export default function RouteScreen() {
           })
           .filter(Boolean) as any[];
 
-        const preferredStops = cachedStops.length
+        let preferredStops = cachedStops.length
           ? cachedStops
           : nearbyStops.length
             ? nearbyStops
@@ -190,6 +192,24 @@ export default function RouteScreen() {
               ? routeStops
               : tpsList;
         const usingOptimalRoute = !cachedStops.length && !nearbyStops.length && routeStops.length > 0;
+
+        // Client-side Dijkstra when the backend didn't provide an ordered route
+        if (!usingOptimalRoute && preferredStops.length > 1) {
+          const startLat = officerLocation?.lat ?? -6.89148;
+          const startLng = officerLocation?.lng ?? 107.6107;
+          const nodes: RouteNode[] = preferredStops.map((s: any) => ({
+            id: s.id,
+            latitude: Number(s.latitude),
+            longitude: Number(s.longitude),
+            ...s,
+          }));
+          const { orderedStops, totalDistKm } = computeOptimalRoute(startLat, startLng, nodes);
+          preferredStops = orderedStops;
+          if (active) {
+            setSummary((prev) => ({ ...prev, distanceKm: totalDistKm }));
+          }
+        }
+
         const nextLine = usingOptimalRoute
           ? routeLine
           : preferredStops.map((stop: any) => ({ latitude: stop.latitude, longitude: stop.longitude }));
@@ -314,19 +334,20 @@ export default function RouteScreen() {
             <View style={styles.connectingLine} />
 
             {routeStops.map((stop: any, index: number) => {
-              const level = stop?.latestReading?.alert_level || 'normal';
-              const statusType = level === 'critical' ? 'danger' : level === 'warning' ? 'warning' : 'success';
-              const statusLabel = level === 'critical' ? 'Kritis' : level === 'warning' ? 'Waspada' : 'Normal';
-              const fullness = stop?.latestReading?.fullness_pct;
+              const fullnessPct = Number(stop?.latestReading?.fullness_pct ?? 0);
+              const ammoniaPpm = Number(stop?.latestReading?.ammonia_ppm ?? 0);
+              const statusKey = getTpsStatus(fullnessPct, ammoniaPpm, false);
+              const visual = getTpsStatusVisual(statusKey);
               const distance = stop?.distanceFromPrevKm;
               return (
                 <RouteItem
                   key={stop.id || `${stop.name}-${index}`}
                   number={`${index + 1}`}
                   name={stop.name}
-                  status={statusLabel}
-                  desc={`${Number.isFinite(fullness) ? `${Number(fullness).toFixed(0)}%` : '-'} Penuh • ${Number.isFinite(distance) ? `${distance.toFixed(1)} km` : '-'}`}
-                  statusType={statusType}
+                  status={visual.label}
+                  statusColor={visual.color}
+                  statusBg={visual.bg}
+                  desc={`${Number.isFinite(fullnessPct) ? `${fullnessPct.toFixed(0)}%` : '-'} Penuh • ${Number.isFinite(distance) ? `${distance.toFixed(1)} km` : '-'}`}
                 />
               );
             })}
@@ -336,9 +357,29 @@ export default function RouteScreen() {
 
       {/* Floating Action Button Area */}
       <View style={styles.floatingActionArea}>
-        <TouchableOpacity 
+        <TouchableOpacity
+          style={styles.gmapsButton}
+          onPress={() => {
+            const mapsUrl = buildGoogleMapsUrl(
+              officerLocation,
+              routeStops.map((s: any) => ({ latitude: Number(s.latitude), longitude: Number(s.longitude) }))
+            );
+            if (!mapsUrl) {
+              Alert.alert('Info', 'Belum ada data rute untuk dibuka di Google Maps.');
+              return;
+            }
+            Linking.openURL(mapsUrl).catch(() =>
+              Alert.alert('Error', 'Tidak dapat membuka Google Maps.')
+            );
+          }}
+        >
+          <MaterialIcons name="map" size={18} color="#002045" />
+          <ThemedText style={[manrope, styles.gmapsButtonText]}>Google Maps</ThemedText>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.navButton}
-          onPress={() => router.push('/map')} // 3. Arahkan ke file map.tsx
+          onPress={() => router.push('/map')}
         >
           <MaterialCommunityIcons name="navigation-variant" size={18} color="#FFFFFF" />
           <ThemedText style={[manrope, styles.navButtonText]}>Mulai Navigasi</ThemedText>
@@ -348,35 +389,32 @@ export default function RouteScreen() {
   );
 }
 
-function RouteItem({ number, name, status, desc, statusType }: any) {
+function RouteItem({ number, name, status, statusColor, statusBg, desc }: {
+  number: string;
+  name: string;
+  status: string;
+  statusColor: string;
+  statusBg: string;
+  desc: string;
+}) {
   const manrope = { fontFamily: 'Manrope' };
-  
-  const getColors = () => {
-    switch(statusType) {
-      case 'danger': return { bg: '#FFDAD6', text: '#BA1A1A' };
-      case 'warning': return { bg: '#FFDF99', text: '#7A5A00' };
-      default: return { bg: '#91F8B8', text: '#002110' };
-    }
-  };
-
-  const styleSet = getColors();
 
   return (
     <View style={styles.routeItemRow}>
-      <View style={[styles.stopCircle, { backgroundColor: styleSet.bg }]}>
-        <ThemedText style={[manrope, styles.stopNumber, { color: styleSet.text }]}>{number}</ThemedText>
+      <View style={[styles.stopCircle, { backgroundColor: statusBg }]}>
+        <ThemedText style={[manrope, styles.stopNumber, { color: statusColor }]}>{number}</ThemedText>
       </View>
-      
+
       <View style={styles.routeCard}>
         <View style={styles.cardHeader}>
           <ThemedText style={[manrope, styles.routeName]}>{name}</ThemedText>
-          <View style={[styles.statusTag, { backgroundColor: styleSet.bg, borderColor: 'transparent' }]}>
-            <ThemedText style={[manrope, styles.statusTagText, { color: styleSet.text }]}>{status}</ThemedText>
+          <View style={[styles.statusTag, { backgroundColor: statusBg, borderColor: 'transparent' }]}>
+            <ThemedText style={[manrope, styles.statusTagText, { color: statusColor }]}>{status}</ThemedText>
           </View>
         </View>
         <View style={styles.cardFooter}>
-           <MaterialIcons name="info-outline" size={12} color="#74777F" />
-           <ThemedText style={[manrope, styles.routeDesc]}>{desc}</ThemedText>
+          <MaterialIcons name="info-outline" size={12} color="#74777F" />
+          <ThemedText style={[manrope, styles.routeDesc]}>{desc}</ThemedText>
         </View>
       </View>
     </View>
@@ -485,10 +523,28 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     width: '100%',
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
     paddingBottom: 30,
+    flexDirection: 'row',
+    gap: 10,
+    backgroundColor: 'rgba(248,249,255,0.95)',
   },
+  gmapsButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#002045',
+    backgroundColor: '#FFFFFF',
+    gap: 6,
+  },
+  gmapsButtonText: { color: '#002045', fontWeight: '700', fontSize: 14, letterSpacing: 0.2 },
   navButton: {
+    flex: 2,
     backgroundColor: '#002045',
     height: 56,
     borderRadius: 28,
@@ -499,7 +555,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
-    elevation: 8
+    elevation: 8,
+    gap: 6,
   },
-  navButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15, marginLeft: 8, letterSpacing: 0.3 },
+  navButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15, letterSpacing: 0.3 },
 });

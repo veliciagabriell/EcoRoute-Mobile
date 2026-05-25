@@ -6,13 +6,18 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Linking,
+  Alert,
 } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { get } from '@/utils/api';
+import * as Location from 'expo-location';
 import { TpsMapView, getRegionForPoints, type MapMarkerData } from '@/components/tps-map-view';
 import { useTpsStore } from '@/stores/tps-store';
 import type { TPSData, TPSStatus } from '@/types/tps';
+import { getTpsStatus, getTpsStatusVisual, type TpsStatusKey } from '@/utils/tps-status';
+import { computeOptimalRoute, buildGoogleMapsUrl, type RouteNode } from '@/utils/dijkstra';
 import {
   useFonts,
   Manrope_400Regular,
@@ -36,23 +41,23 @@ type MapStop = {
   latestReading: SensorReading;
 };
 
-type FilterKey = 'all' | 'critical' | 'warning' | 'normal';
+type FilterKey = 'all' | TpsStatusKey | 'MENUNGGU';
 
-function computeStatus(reading: SensorReading): { key: string; label: string; color: string; bg: string } {
+function computeStatus(reading: SensorReading): { key: FilterKey; label: string; color: string; bg: string } {
   if (!reading) {
-    return { key: 'waiting', label: 'MENUNGGU', color: '#74777F', bg: '#E5EEFF' };
+    return { key: 'MENUNGGU', label: 'MENUNGGU', color: '#74777F', bg: '#E5EEFF' };
   }
   const fullness = reading.fullness_pct ?? 0;
   const ammonia = reading.ammonia_ppm ?? 0;
-  // Trust backend alert_level if present, otherwise compute
-  const level = reading.alert_level;
-  if (level === 'critical' || fullness >= 80 || ammonia >= 50) {
-    return { key: 'critical', label: 'KRITIS', color: '#BA1A1A', bg: '#FFDAD6' };
-  }
-  if (level === 'warning' || fullness >= 60 || ammonia >= 30) {
-    return { key: 'warning', label: 'WASPADA', color: '#D97706', bg: '#FEF3C7' };
-  }
-  return { key: 'normal', label: 'NORMAL', color: '#2E7D32', bg: '#E8F5E9' };
+  const statusKey = getTpsStatus(fullness, ammonia, false);
+  const visual = getTpsStatusVisual(statusKey);
+  return { key: statusKey, label: visual.label, color: visual.color, bg: visual.bg };
+}
+
+function tpsStatusToMarkerStatus(key: FilterKey): 'critical' | 'warning' | 'normal' {
+  if (key === 'DARURAT' || key === 'PENUH' || key === 'BAU_EKSTREM') return 'critical';
+  if (key === 'PERINGATAN') return 'warning';
+  return 'normal';
 }
 
 export default function TPSMapScreen() {
@@ -64,6 +69,9 @@ export default function TPSMapScreen() {
   const [stops, setStops] = useState<MapStop[]>([]);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [officerLocation, setOfficerLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [dijkstraRoute, setDijkstraRoute] = useState<{ latitude: number; longitude: number }[]>([]);
+  const [dijkstraDistKm, setDijkstraDistKm] = useState(0);
 
   const [fontsLoaded] = useFonts({
     Manrope: Manrope_400Regular,
@@ -141,6 +149,52 @@ export default function TPSMapScreen() {
     };
   }, [upsertTPSList, setNearbyTpsList]);
 
+  // Get officer GPS and compute Dijkstra route whenever stops change
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      let lat = -6.89148;
+      let lng = 107.6107;
+
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          try {
+            const last = await Location.getLastKnownPositionAsync();
+            if (last) { lat = last.coords.latitude; lng = last.coords.longitude; }
+          } catch { /* ignore */ }
+          try {
+            const loc = await Promise.race([
+              Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+              new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000)),
+            ]) as Location.LocationObject;
+            lat = loc.coords.latitude;
+            lng = loc.coords.longitude;
+          } catch { /* keep last known */ }
+        }
+      } catch { /* no permission, use default */ }
+
+      if (cancelled || stops.length === 0) return;
+
+      if (!cancelled) setOfficerLocation({ lat, lng });
+
+      const nodes: RouteNode[] = stops.map((s) => ({
+        id: s.id,
+        latitude: s.latitude,
+        longitude: s.longitude,
+      }));
+
+      const { orderedStops, totalDistKm } = computeOptimalRoute(lat, lng, nodes);
+      if (!cancelled) {
+        setDijkstraRoute(orderedStops.map((s) => ({ latitude: s.latitude, longitude: s.longitude })));
+        setDijkstraDistKm(totalDistKm);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [stops]);
+
   const mapRegion = useMemo(() => {
     const points = stops.map((s) => ({ latitude: s.latitude, longitude: s.longitude }));
     return getRegionForPoints(points.length ? points : [{ latitude: -6.8914, longitude: 107.6107 }], 0.04);
@@ -149,11 +203,11 @@ export default function TPSMapScreen() {
   const filteredStops = useMemo(() => {
     return stops.filter((stop) => {
       const status = computeStatus(stop.latestReading);
+      // NORMAL filter also shows MENUNGGU (no reading yet)
       const matchFilter =
         filter === 'all' ||
         filter === status.key ||
-        // "normal" chip also shows "waiting" TPS that have no data yet
-        (filter === 'normal' && status.key === 'waiting');
+        (filter === 'NORMAL' && status.key === 'MENUNGGU');
       const matchSearch = stop.name.toLowerCase().includes(searchQuery.toLowerCase());
       return matchFilter && matchSearch;
     });
@@ -168,8 +222,7 @@ export default function TPSMapScreen() {
           name: stop.name,
           latitude: stop.latitude,
           longitude: stop.longitude,
-          // Map 'waiting' to 'normal' for the marker color (tps-map-view only knows 3 statuses)
-          status: (status.key === 'waiting' ? 'normal' : status.key) as TPSStatus,
+          status: tpsStatusToMarkerStatus(status.key) as TPSStatus,
         };
       }),
     [filteredStops]
@@ -185,6 +238,8 @@ export default function TPSMapScreen() {
       <View style={styles.mapContainer}>
         <TpsMapView
           markers={markers}
+          routeLine={dijkstraRoute}
+          currentLocation={officerLocation ? { latitude: officerLocation.lat, longitude: officerLocation.lng } : undefined}
           initialRegion={mapRegion}
           onMarkerPress={(markerId) => setSelectedTPSId(markerId)}
         />
@@ -226,12 +281,42 @@ export default function TPSMapScreen() {
           style={styles.filterContainer}
           contentContainerStyle={styles.filterContent}
         >
-          <FilterChip label="Semua" color="#1A365D" active={filter === 'all'} onPress={() => setFilter('all')} />
-          <FilterChip label="Kritis" color="#BA1A1A" active={filter === 'critical'} onPress={() => setFilter('critical')} />
-          <FilterChip label="Waspada" color="#F59E0B" active={filter === 'warning'} onPress={() => setFilter('warning')} />
-          <FilterChip label="Normal" color="#4BB278" active={filter === 'normal'} onPress={() => setFilter('normal')} />
+          <FilterChip label="Semua"        color="#1A365D" active={filter === 'all'}               onPress={() => setFilter('all')} />
+          <FilterChip label="Darurat"      color="#93000A" active={filter === 'DARURAT'}          onPress={() => setFilter('DARURAT')} />
+          <FilterChip label="Penuh"        color="#BA1A1A" active={filter === 'PENUH'}             onPress={() => setFilter('PENUH')} />
+          <FilterChip label="Bau Ekstrem"  color="#7A4500" active={filter === 'BAU_EKSTREM'}      onPress={() => setFilter('BAU_EKSTREM')} />
+          <FilterChip label="Peringatan"   color="#7A5A00" active={filter === 'PERINGATAN'}       onPress={() => setFilter('PERINGATAN')} />
+          <FilterChip label="Normal"       color="#4BB278" active={filter === 'NORMAL'}            onPress={() => setFilter('NORMAL')} />
         </ScrollView>
       </View>
+
+      {/* Dijkstra route info + Google Maps button */}
+      {dijkstraRoute.length > 1 && (
+        <View style={styles.routeInfoBar}>
+          <View style={styles.routeInfoBadge}>
+            <MaterialCommunityIcons name="brain" size={13} color="#002045" />
+            <ThemedText style={[manrope, styles.routeInfoText]}>
+              Dijkstra · {dijkstraDistKm.toFixed(1)} km · {stops.length} TPS
+            </ThemedText>
+          </View>
+          <TouchableOpacity
+            style={styles.gmapsBtn}
+            onPress={() => {
+              const url = buildGoogleMapsUrl(
+                officerLocation,
+                dijkstraRoute
+              );
+              if (!url) return;
+              Linking.openURL(url).catch(() =>
+                Alert.alert('Error', 'Tidak dapat membuka Google Maps.')
+              );
+            }}
+          >
+            <MaterialIcons name="map" size={15} color="#FFFFFF" />
+            <ThemedText style={[manrope, styles.gmapsBtnText]}>Buka Google Maps</ThemedText>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* FAB */}
       <TouchableOpacity style={styles.fab}>
@@ -272,13 +357,13 @@ export default function TPSMapScreen() {
                 statusColor={status.color}
                 bgIcon={status.bg}
                 icon={
-                  status.key === 'critical'
-                    ? 'delete-outline'
-                    : status.key === 'warning'
-                    ? 'warning'
-                    : status.key === 'waiting'
-                    ? 'access-time'
-                    : 'check-circle'
+                  status.key === 'DARURAT'            ? 'warning'
+                  : status.key === 'PENUH'            ? 'delete-outline'
+                  : status.key === 'BAU_EKSTREM'      ? 'air'
+                  : status.key === 'PERINGATAN'       ? 'report-problem'
+                  : status.key === 'NORMAL_MQ135_ERROR' ? 'sensors-off'
+                  : status.key === 'MENUNGGU'         ? 'access-time'
+                  : 'check-circle'
                 }
                 onPress={() => setSelectedTPSId(stop.id)}
               />
@@ -430,6 +515,48 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope-SemiBold',
     fontSize: 14,
     color: '#0D1C2E',
+  },
+  routeInfoBar: {
+    position: 'absolute',
+    right: 20,
+    bottom: 320,
+    left: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#1A365D',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  routeInfoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  routeInfoText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#002045',
+  },
+  gmapsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4285F4',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 5,
+  },
+  gmapsBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   fab: {
     position: 'absolute',

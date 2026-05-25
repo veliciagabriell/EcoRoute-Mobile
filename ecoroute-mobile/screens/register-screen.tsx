@@ -13,7 +13,7 @@ export default function RegisterScreen({ onNavigateToLogin }: { onNavigateToLogi
 
   const [namaLengkap, setNamaLengkap] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('umum');
+  const [role, setRole] = useState('public');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -161,7 +161,7 @@ export default function RegisterScreen({ onNavigateToLogin }: { onNavigateToLogi
             disabled={isLoading}
           >
             <ThemedText style={[styles.dropdownText, { color: colors.textPrimary }]}>
-              {role === 'petugas' ? 'Petugas' : 'Pengguna Umum'}
+              {role === 'officer' ? 'Petugas' : 'Pengguna Umum'}
             </ThemedText>
             <MaterialIcons name="expand-more" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
@@ -170,7 +170,7 @@ export default function RegisterScreen({ onNavigateToLogin }: { onNavigateToLogi
               <TouchableOpacity
                 style={styles.dropdownItem}
                 onPress={() => {
-                  setRole('umum');
+                  setRole('public');
                   setShowRoleDropdown(false);
                 }}
               >
@@ -181,7 +181,7 @@ export default function RegisterScreen({ onNavigateToLogin }: { onNavigateToLogi
               <TouchableOpacity
                 style={styles.dropdownItem}
                 onPress={() => {
-                  setRole('petugas');
+                  setRole('officer');
                   setShowRoleDropdown(false);
                 }}
               >

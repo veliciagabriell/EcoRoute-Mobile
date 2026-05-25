@@ -132,12 +132,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     console.log('[Auth] Starting register:', { email, role });
     try {
-      const backendRole = ['umum', 'petugas', 'admin'].includes(role) ? role : 'umum';
+      const backendRole = ['public', 'officer', 'admin'].includes(role) ? role : 'public';
       const registerResp = await registerUser({
         name: namaLengkap,
         email,
         password,
-        role: backendRole as 'umum' | 'petugas' | 'admin',
+        role: backendRole as 'public' | 'officer' | 'admin',
       });
       
       console.log('[Auth] Register response:', registerResp);

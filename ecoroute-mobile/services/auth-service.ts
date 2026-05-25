@@ -11,7 +11,7 @@ export type AuthUser = {
   id: string;
   email: string;
   name: string;
-  role: 'umum' | 'petugas' | 'admin';
+  role: 'public' | 'officer' | 'admin';
   work_area?: string | null;
 };
 
@@ -40,7 +40,7 @@ export async function registerUser(payload: {
   name: string;
   email: string;
   password: string;
-  role: 'umum' | 'petugas' | 'admin';
+  role: 'public' | 'officer' | 'admin';
 }) {
   try {
     return await post('/auth/register', payload);
@@ -78,11 +78,20 @@ export async function refreshAccessToken(refreshToken: string) {
 export async function fetchMe() {
   try {
     const response = (await get('/users/me')) as ApiResponse<{ user?: AuthUser }> | AuthUser;
-    if ('data' in response && response.data?.user) return response.data.user;
-    return response as AuthUser;
+    const user = ('data' in response && response.data?.user) ? response.data.user : response as AuthUser;
+    return normalizeUser(user);
   } catch (err) {
     throw new Error(getAuthErrorMessage(err));
   }
+}
+
+function normalizeUser(user: AuthUser): AuthUser {
+  const legacyMap: Record<string, AuthUser['role']> = { umum: 'public', petugas: 'officer' };
+  const lower = (user.role?.toLowerCase() ?? 'public') as string;
+  return {
+    ...user,
+    role: legacyMap[lower] ?? (lower as AuthUser['role']),
+  };
 }
 
 function normalizeAuthResponse(response: unknown): LoginResponse {
@@ -99,7 +108,7 @@ function normalizeAuthResponse(response: unknown): LoginResponse {
   return {
     access_token: accessToken,
     refresh_token: refreshToken,
-    user,
+    user: normalizeUser(user),
   };
 }
 

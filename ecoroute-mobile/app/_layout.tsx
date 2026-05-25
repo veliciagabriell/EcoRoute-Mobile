@@ -62,7 +62,7 @@ function RootLayoutContent() {
 
     // Jika sudah login dan belum di tab utama, redirect ke dashboard
     if (isSignedIn && !inTabsGroup) {
-      const target = (user?.role === 'admin' || user?.role === 'petugas') ? '/(tabs)' : '/(tabs)/profile';
+      const target = (user?.role === 'admin' || user?.role === 'officer') ? '/(tabs)' : '/(tabs)/profile';
       console.log('[Navigation] Redirecting to:', target);
       router.replace(target);
     }
