@@ -130,23 +130,46 @@ export default function TPSDetailScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Simple TPS list fetched from backend
         {tpsList.length > 0 && (
-          <View style={{ paddingHorizontal: 16, marginTop: 12 }}>
-            {tpsList.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={{ padding: 12, backgroundColor: '#FFFFFF', borderRadius: 8, marginBottom: 8 }}
-                onPress={() => setSelectedTPSId(item.id)}
-              >
-                <ThemedText style={{ fontWeight: '600' }}>{item.name}</ThemedText>
-                <ThemedText style={{ color: '#666' }}>
-                  {Number.isFinite(item.fullness) ? `${item.fullness.toFixed(0)}%` : '-'} Penuh
-                </ThemedText>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.tpsSelectorSection}>
+            <ThemedText style={styles.tpsSelectorTitle}>Ganti lokasi TPS</ThemedText>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tpsSelectorList}
+            >
+              {tpsList.map((item) => {
+                const isActive = activeTPS?.id === item.id;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.tpsSelectorChip, isActive && styles.tpsSelectorChipActive]}
+                    onPress={() => setSelectedTPSId(item.id)}
+                    activeOpacity={0.8}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.tpsSelectorName,
+                        isActive && styles.tpsSelectorNameActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {item.name}
+                    </ThemedText>
+                    <ThemedText
+                      style={[
+                        styles.tpsSelectorMeta,
+                        isActive && styles.tpsSelectorMetaActive,
+                      ]}
+                    >
+                      {Number.isFinite(item.fullness) ? `${item.fullness.toFixed(0)}% penuh` : 'Menunggu data'}
+                    </ThemedText>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
-        )} */}
+        )}
         <View style={styles.statusBanner}>
           <View style={styles.statusIconBox}>
             <MaterialIcons name="warning" size={16} color="#FFFFFF" />
@@ -348,6 +371,54 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  tpsSelectorSection: {
+    marginTop: 16,
+  },
+  tpsSelectorTitle: {
+    fontFamily: 'Manrope',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D1C2E',
+    marginHorizontal: 20,
+    marginBottom: 8,
+  },
+  tpsSelectorList: {
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  tpsSelectorChip: {
+    width: 150,
+    minHeight: 68,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(196, 198, 207, 0.7)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'center',
+  },
+  tpsSelectorChipActive: {
+    backgroundColor: '#002045',
+    borderColor: '#002045',
+  },
+  tpsSelectorName: {
+    fontFamily: 'Manrope',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D1C2E',
+    marginBottom: 4,
+  },
+  tpsSelectorNameActive: {
+    color: '#FFFFFF',
+  },
+  tpsSelectorMeta: {
+    fontFamily: 'Manrope',
+    fontSize: 11,
+    color: '#74777F',
+  },
+  tpsSelectorMetaActive: {
+    color: '#D7E3F8',
   },
   statusBanner: {
     flexDirection: 'row',

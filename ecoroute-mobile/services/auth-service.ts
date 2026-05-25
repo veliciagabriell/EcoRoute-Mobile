@@ -150,7 +150,7 @@ function getAuthErrorMessage(err: unknown) {
     normalized.includes('network request failed') ||
     normalized.includes('network error')
   ) {
-    return 'Network error — tidak bisa konek ke server. Pastikan backend jalan, IP server benar di .env, dan firewall mengizinkan port 3000.';
+    return 'Network error — tidak bisa konek ke server. Pastikan backend web jalan, IP server benar di .env, dan firewall mengizinkan port 5000.';
   }
 
   try {

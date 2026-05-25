@@ -1,7 +1,7 @@
 import { View, ScrollView, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
 import { useEffect, useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { get } from '@/utils/api';
+import { getSensorStatuses } from '@/services/tps-service';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -18,7 +18,7 @@ export default function SensorMonitoringScreen() {
   const fetchSensorStatus = useCallback(async () => {
     try {
       setError(null);
-      const data = await get('/sensors/status');
+      const data = await getSensorStatuses();
       setSensors(data);
     } catch (err) {
       console.error('Error fetching sensor status:', err);

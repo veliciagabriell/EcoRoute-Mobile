@@ -1,6 +1,6 @@
 import { View, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useEffect, useState } from 'react';
-import { get } from '@/utils/api';
+import { getSensorStatuses } from '@/services/tps-service';
 import { ThemedText } from '@/components/themed-text';
 import { Colors } from '@/constants/theme';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -37,10 +37,10 @@ export function AlertSummaryWidget({ colorScheme, onCriticalPress, onWarningPres
 
   const fetchAlertSummary = async () => {
     try {
-      const data = await get('/sensors/status');
-      const critical = data.filter((s: any) => s.alert.level === 'critical').length;
-      const warning = data.filter((s: any) => s.alert.level === 'warning').length;
-      const normal = data.filter((s: any) => s.alert.level === 'normal').length;
+      const data = await getSensorStatuses();
+      const critical = data.filter((s) => s.alert.level === 'critical').length;
+      const warning = data.filter((s) => s.alert.level === 'warning').length;
+      const normal = data.filter((s) => s.alert.level === 'normal').length;
       setSummary({
         criticalCount: critical,
         warningCount: warning,
