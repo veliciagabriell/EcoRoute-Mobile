@@ -27,23 +27,45 @@ async function register(req, res, next) {
     const allowedRoles = ['umum', 'petugas', 'admin'];
     const assignedRole = allowedRoles.includes(role) ? role : 'umum';
 
-    const newUser = await usersModel.create({
-      name,
-      email,
-      password_hash,
-      role: assignedRole,
-      work_area: null,
-      fcm_token: null,
-    });
+    let newUser;
+    try {
+      newUser = await usersModel.create({
+        name,
+        email,
+        password_hash,
+        role: assignedRole,
+        work_area: null,
+        fcm_token: null,
+      });
+    } catch (err) {
+      const msg = typeof err?.message === 'string' ? err.message : '';
+      const isEnumError = msg.includes('invalid input value for enum user_role');
+      if (isEnumError && assignedRole === 'umum') {
+        newUser = await usersModel.create({
+          name,
+          email,
+          password_hash,
+          role: 'public',
+          work_area: null,
+          fcm_token: null,
+        });
+      } else {
+        throw err;
+      }
+    }
 
     // Hilangkan password_hash sebelum dikirim
   const { password_hash: passwordHash, ...userProfile } = newUser;
   void passwordHash;
+    const normalizedProfile = {
+      ...userProfile,
+      role: userProfile.role === 'public' ? 'umum' : userProfile.role,
+    };
     console.log('[Auth] Register success:', { id: userProfile.id, email: userProfile.email });
 
     return res.status(201).json({
       message: 'Registrasi berhasil',
-      user: userProfile,
+      user: normalizedProfile,
     });
   } catch (err) {
     console.error('[Auth] Register error:', err.message);
@@ -86,12 +108,16 @@ async function login(req, res, next) {
     // Hilangkan password_hash sebelum dikirim
   const { password_hash: passwordHash, ...userProfile } = user;
   void passwordHash;
+    const normalizedProfile = {
+      ...userProfile,
+      role: userProfile.role === 'public' ? 'umum' : userProfile.role,
+    };
     console.log('[Auth] Login success:', { id: userProfile.id, email: userProfile.email, role: userProfile.role });
 
     return res.json({
       access_token: access,
       refresh_token: refresh,
-      user: userProfile,
+      user: normalizedProfile,
     });
   } catch (err) {
     console.error('[Auth] Login error:', err.message);

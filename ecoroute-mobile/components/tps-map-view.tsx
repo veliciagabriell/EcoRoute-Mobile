@@ -1,7 +1,13 @@
-import { useMemo } from 'react';
-import { StyleSheet } from 'react-native';
-import MapView, { Marker, Polyline, UrlTile, type Region } from 'react-native-maps';
+import { useMemo, type ComponentType } from 'react';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { TPSStatus } from '@/types/tps';
+
+type Region = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
 
 export type MapMarkerData = {
   id: string;
@@ -25,6 +31,12 @@ const markerColorForStatus = (status?: TPSStatus) => {
   return '#4BB278';
 };
 
+const labelForStatus = (status?: TPSStatus) => {
+  if (status === 'critical') return 'Kritis';
+  if (status === 'warning') return 'Perlu perhatian';
+  return 'Aman';
+};
+
 export function TpsMapView({
   markers,
   routeLine = [],
@@ -36,6 +48,50 @@ export function TpsMapView({
     if (routeLine.length > 0) return routeLine;
     return markers.map((stop) => ({ latitude: stop.latitude, longitude: stop.longitude }));
   }, [markers, routeLine]);
+
+  if (Platform.OS === 'web') {
+    return (
+      <View style={styles.webContainer}>
+        <Text style={styles.webTitle}>Peta tidak tersedia di web</Text>
+        <Text style={styles.webSubtitle}>
+          Gunakan aplikasi mobile untuk melihat peta interaktif.
+        </Text>
+
+        {currentLocation && (
+          <View style={styles.webCard}>
+            <Text style={styles.webCardTitle}>Lokasi Anda</Text>
+            <Text style={styles.webCardText}>
+              {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
+            </Text>
+          </View>
+        )}
+
+        <ScrollView contentContainerStyle={styles.webList}>
+          {markers.map((marker) => (
+            <View key={marker.id} style={styles.webCard}>
+              <Text style={styles.webCardTitle}>{marker.name}</Text>
+              <Text style={styles.webCardText}>
+                {marker.latitude.toFixed(6)}, {marker.longitude.toFixed(6)}
+              </Text>
+              <Text style={styles.webStatus}>Status: {labelForStatus(marker.status)}</Text>
+            </View>
+          ))}
+          {markers.length === 0 && (
+            <Text style={styles.webEmpty}>Belum ada data TPS untuk ditampilkan.</Text>
+          )}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const MapViewModule = require('react-native-maps');
+  const MapView = MapViewModule.default as ComponentType<any>;
+  const { Marker, Polyline, UrlTile } = MapViewModule as {
+    Marker: ComponentType<any>;
+    Polyline: ComponentType<any>;
+    UrlTile: ComponentType<any>;
+  };
 
   return (
     <MapView style={styles.map} initialRegion={initialRegion}>
@@ -99,5 +155,51 @@ export const getRegionForPoints = (
 const styles = StyleSheet.create({
   map: {
     ...StyleSheet.absoluteFillObject,
+  },
+  webContainer: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: '#0F172A',
+  },
+  webTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    marginBottom: 4,
+  },
+  webSubtitle: {
+    fontSize: 13,
+    color: '#CBD5F5',
+    marginBottom: 12,
+  },
+  webList: {
+    gap: 12,
+    paddingBottom: 24,
+  },
+  webCard: {
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#111827',
+    borderWidth: 1,
+    borderColor: '#1F2937',
+  },
+  webCardTitle: {
+    color: '#F9FAFB',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  webCardText: {
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  webStatus: {
+    marginTop: 6,
+    color: '#E2E8F0',
+    fontWeight: '500',
+  },
+  webEmpty: {
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 12,
   },
 });
